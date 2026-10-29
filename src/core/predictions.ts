@@ -277,10 +277,17 @@ export async function getPredictionsForUser(
       p.selection,
       p.outcome,
       p.verification,
-      p.created_at
+      p.created_at,
+      CASE
+        WHEN r.job_id IS NOT NULL THEN 'CONFIRMED'
+        WHEN o.status = 'CONFIRMED' THEN 'CONFIRMED'
+        ELSE 'PENDING'
+      END AS walrus_sync_status
     FROM predictions p
     JOIN events e ON e.id = p.event_id
     LEFT JOIN analysts a ON a.id = p.analyst_id
+    LEFT JOIN memory_outbox o ON o.user_id = p.user_id AND o.event_key = 'pred-create-' || p.id::text
+    LEFT JOIN memory_receipts r ON r.user_id = p.user_id AND r.job_id = o.walrus_job_id
     WHERE p.user_id = $1
       AND p.archived_at IS NULL
       ${statusCondition}

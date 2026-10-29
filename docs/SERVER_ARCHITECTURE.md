@@ -90,3 +90,4 @@ The lightweight Progressive Web App architecture consists of two static assets:
 2. **`sw.js` (Service Worker):**
    - Implements a cache-first strategy for static font and layout assets.
    - **Strict Privacy Invariant:** **Never caches `/api/*` responses.** All private user prediction data, analyst records, and auth tokens are excluded from persistent browser cache storage.
+

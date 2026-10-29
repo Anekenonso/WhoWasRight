@@ -32,6 +32,7 @@ export interface AnalystRecord {
   aliases?: AnalystAlias[];
   credibility?: CredibilityScorecard;
   mergedAnalysts?: AnalystRecord[];
+  predictions?: any[];
 }
 
 /**
@@ -363,13 +364,37 @@ export async function getAnalystDetail(userId: string, analystId: string): Promi
   `, [analystId, userId]);
   analyst.mergedAnalysts = mergedRes.rows;
 
-  // Fetch all predictions for this analyst (and any merged sub-analysts)
-  const predRes = await query<{ outcome: string; verification: string }>(`
-    SELECT outcome, verification
-    FROM predictions
-    WHERE user_id = $1 AND (analyst_id = $2 OR analyst_id IN (SELECT id FROM analysts WHERE merged_into_id = $2));
+  // Fetch all predictions for this analyst (and any merged sub-analysts) with event info
+  const predRes = await query<{
+    id: string;
+    event_id: string;
+    market: string;
+    selection: string;
+    outcome: string;
+    verification: string;
+    created_at: string;
+    event_label: string;
+    start_at_utc: string;
+    sport: string;
+  }>(`
+    SELECT
+      p.id,
+      p.event_id,
+      p.market,
+      p.selection,
+      p.outcome,
+      p.verification,
+      p.created_at,
+      e.label AS event_label,
+      e.start_at_utc,
+      e.sport
+    FROM predictions p
+    JOIN events e ON e.id = p.event_id
+    WHERE p.user_id = $1 AND (p.analyst_id = $2 OR p.analyst_id IN (SELECT id FROM analysts WHERE merged_into_id = $2))
+    ORDER BY p.created_at DESC;
   `, [userId, analystId]);
 
   analyst.credibility = computeCredibility(predRes.rows, analystId);
+  analyst.predictions = predRes.rows;
   return analyst;
 }

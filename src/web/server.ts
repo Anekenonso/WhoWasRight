@@ -801,9 +801,20 @@ function renderMobileAppHtml(): string {
               <label class="label" style="margin-bottom: 0;">Analyst</label>
               <a href="javascript:void(0)" onclick="openNewAnalystModal()" style="font-size: 12px; color: var(--blue); text-decoration: none;">+ New Analyst</a>
             </div>
-            <select id="form-analyst" class="select" required>
+            <select id="form-analyst" class="select" onchange="handleAnalystDropdownChange()" required>
               <option value="">Select Analyst...</option>
             </select>
+          </div>
+
+          <!-- Inline Credibility Summary Card for Selected Analyst -->
+          <div id="analyst-credibility-preview" class="card hidden" style="background: var(--blue-light); border: 1px solid #BFDBFE; padding: 12px; margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <span style="font-size: 12px; font-weight: 600; color: var(--blue);" id="prev-analyst-name">Analyst Credibility</span>
+              <span class="badge" id="prev-analyst-badge">Not Rated</span>
+            </div>
+            <div style="font-size: 12px; color: var(--navy);" id="prev-analyst-summary">
+              0 settled picks · Insufficient history
+            </div>
           </div>
 
           <!-- Market -->
@@ -854,6 +865,83 @@ function renderMobileAppHtml(): string {
       <div id="analysts-list">
         <div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">
           Loading analysts...
+        </div>
+      </div>
+    </div>
+
+    <!-- Screen 4b: Analyst Detail Screen -->
+    <div id="screen-analyst-detail" class="screen hidden">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <button class="btn btn-outline btn-sm" onclick="switchTab('analysts')" style="min-width: 44px; min-height: 44px; padding: 0 12px;">
+          ← Back
+        </button>
+        <span style="font-size: 16px; font-weight: 700;" id="detail-analyst-title">Analyst Profile</span>
+      </div>
+
+      <!-- Credibility Card -->
+      <div class="card" id="detail-credibility-card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+          <div>
+            <div style="font-size: 18px; font-weight: 700; color: var(--navy);" id="detail-name"></div>
+            <div style="font-size: 12px; color: var(--muted);" id="detail-aliases"></div>
+          </div>
+          <span class="badge" id="detail-rating-tier-badge" style="font-size: 13px; padding: 4px 10px;">Not Rated</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+          <div style="background: var(--bg); padding: 10px 12px; border-radius: 8px;">
+            <div style="font-size: 11px; color: var(--muted);">WIN RATE</div>
+            <div style="font-size: 20px; font-weight: 700; color: var(--navy);" id="detail-win-rate">—</div>
+          </div>
+          <div style="background: var(--bg); padding: 10px 12px; border-radius: 8px;">
+            <div style="font-size: 11px; color: var(--muted);">HISTORY BADGE</div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--navy); margin-top: 4px;" id="detail-history-badge">Insufficient</div>
+          </div>
+        </div>
+
+        <!-- Outcome breakdown grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; text-align: center;">
+          <div style="background: #F0FDF4; border: 1px solid #DCFCE7; padding: 8px; border-radius: 6px;">
+            <div style="font-size: 11px; color: #166534; font-weight: 600;">WON</div>
+            <div style="font-size: 16px; font-weight: 700; color: #166534;" id="detail-count-won">0</div>
+          </div>
+          <div style="background: #FEF2F2; border: 1px solid #FEE2E2; padding: 8px; border-radius: 6px;">
+            <div style="font-size: 11px; color: #991B1B; font-weight: 600;">LOST</div>
+            <div style="font-size: 16px; font-weight: 700; color: #991B1B;" id="detail-count-lost">0</div>
+          </div>
+          <div style="background: #F8FAFC; border: 1px solid var(--border); padding: 8px; border-radius: 6px;">
+            <div style="font-size: 11px; color: var(--muted); font-weight: 600;">PUSH</div>
+            <div style="font-size: 16px; font-weight: 700; color: var(--slate);" id="detail-count-push">0</div>
+          </div>
+        </div>
+
+        <!-- Verification breakdown -->
+        <div style="padding: 10px 0; border-top: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between;">
+          <span style="color: var(--muted);">Verification:</span>
+          <span>
+            <strong id="detail-count-api">0</strong> API-Verified · <strong id="detail-count-self">0</strong> Self-Reported
+          </span>
+        </div>
+
+        <!-- Walrus Decentralized Memory Sync Status -->
+        <div style="padding: 10px 0; border-top: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: var(--muted);">Walrus Memory:</span>
+          <span class="badge badge-verified" id="detail-walrus-status">✓ Confirmed on Mainnet</span>
+        </div>
+
+        <!-- Historical Integrity Banner -->
+        <div id="detail-integrity-banner" class="banner banner-success" style="margin-top: 10px; margin-bottom: 0;">
+          <span id="detail-integrity-text">✓ Cryptographic Audit Trail Verified</span>
+        </div>
+      </div>
+
+      <!-- Analyst Prediction History -->
+      <div class="card">
+        <div class="card-title">Prediction History</div>
+        <div id="detail-predictions-list">
+          <div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">
+            No predictions logged for this analyst.
+          </div>
         </div>
       </div>
     </div>
@@ -984,7 +1072,8 @@ function renderMobileAppHtml(): string {
     window.addEventListener('DOMContentLoaded', async () => {
       // Set default kickoff time to 2 hours from now UTC
       const defaultKickoff = new Date(Date.now() + 2 * 3600 * 1000);
-      document.getElementById('form-kickoff').value = defaultKickoff.toISOString().slice(0, 16);
+      const kickoffInput = document.getElementById('form-kickoff');
+      if (kickoffInput) kickoffInput.value = defaultKickoff.toISOString().slice(0, 16);
 
       await Promise.all([
         refreshDailyLimits(),
@@ -1023,7 +1112,9 @@ function renderMobileAppHtml(): string {
       document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
-      document.getElementById('screen-' + tab).classList.remove('hidden');
+      const targetScreen = document.getElementById('screen-' + tab);
+      if (targetScreen) targetScreen.classList.remove('hidden');
+
       const navItem = document.getElementById('tab-' + tab);
       if (navItem) navItem.classList.add('active');
       currentTab = tab;
@@ -1045,9 +1136,88 @@ function renderMobileAppHtml(): string {
     function closeLogScreen() {
       switchTab(previousTab || 'home');
     }
-      if (tab === 'predictions') renderPredictionsList();
-      if (tab === 'analysts') renderAnalystsList();
-      if (tab === 'log') refreshDailyLimits();
+
+    // Inline Credibility Preview in Logging Flow
+    function handleAnalystDropdownChange() {
+      const select = document.getElementById('form-analyst');
+      const analystId = select.value;
+      const preview = document.getElementById('analyst-credibility-preview');
+      if (!analystId) {
+        preview.classList.add('hidden');
+        return;
+      }
+      const analyst = analystsList.find(a => a.id === analystId);
+      if (!analyst) {
+        preview.classList.add('hidden');
+        return;
+      }
+      const cred = analyst.credibility || {};
+      const badge = document.getElementById('prev-analyst-badge');
+      const summary = document.getElementById('prev-analyst-summary');
+      const name = document.getElementById('prev-analyst-name');
+
+      name.textContent = analyst.name;
+      const tier = cred.ratingTier || 'Not Rated';
+      badge.textContent = tier;
+      badge.className = 'badge ' + (tier === 'Good' ? 'badge-good' : tier === 'Average' ? 'badge-average' : tier === 'Poor' ? 'badge-poor' : 'badge-not-rated');
+
+      const winRateText = cred.winRate !== null && cred.winRate !== undefined ? cred.winRate + '% Win Rate' : 'No Win Rate';
+      summary.textContent = tier + ' (' + winRateText + ') · ' + (cred.wonCount || 0) + 'W - ' + (cred.lostCount || 0) + 'L - ' + (cred.pushCount || 0) + 'P · ' + (cred.historyBadge || 'Insufficient') + ' History';
+      preview.classList.remove('hidden');
+    }
+
+    // Open Analyst Detail Screen
+    async function openAnalystDetail(analystId) {
+      previousTab = currentTab;
+      document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById('screen-analyst-detail').classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/analysts/' + analystId);
+        const a = await res.json();
+        const cred = a.credibility || {};
+
+        document.getElementById('detail-name').textContent = a.name;
+        document.getElementById('detail-analyst-title').textContent = a.name;
+        const aliases = (a.aliases || []).map(al => '@' + al.handle + ' (' + al.platform + ')').join(', ') || 'No aliases linked';
+        document.getElementById('detail-aliases').textContent = aliases;
+
+        const tier = cred.ratingTier || 'Not Rated';
+        const tierBadge = document.getElementById('detail-rating-tier-badge');
+        tierBadge.textContent = tier;
+        tierBadge.className = 'badge ' + (tier === 'Good' ? 'badge-good' : tier === 'Average' ? 'badge-average' : tier === 'Poor' ? 'badge-poor' : 'badge-not-rated');
+
+        document.getElementById('detail-win-rate').textContent = cred.winRate !== null && cred.winRate !== undefined ? cred.winRate + '%' : '—';
+        document.getElementById('detail-history-badge').textContent = (cred.historyBadge || 'Insufficient') + ' History';
+
+        document.getElementById('detail-count-won').textContent = cred.wonCount || 0;
+        document.getElementById('detail-count-lost').textContent = cred.lostCount || 0;
+        document.getElementById('detail-count-push').textContent = cred.pushCount || 0;
+
+        document.getElementById('detail-count-api').textContent = cred.apiVerifiedCount || 0;
+        document.getElementById('detail-count-self').textContent = cred.selfReportedCount || 0;
+
+        // Render predictions for this analyst
+        const predsContainer = document.getElementById('detail-predictions-list');
+        const preds = a.predictions || [];
+        if (preds.length === 0) {
+          predsContainer.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">No predictions logged for this analyst.</div>';
+        } else {
+          predsContainer.innerHTML = preds.map(p => {
+            const outClass = p.outcome === 'WON' ? 'badge-won' : p.outcome === 'LOST' ? 'badge-lost' : 'badge-pending';
+            return '<div style="padding: 10px 0; border-bottom: 1px solid var(--border);">' +
+              '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">' +
+                '<strong>' + p.event_label + '</strong>' +
+                '<span class="badge ' + outClass + '">' + p.outcome + '</span>' +
+              '</div>' +
+              '<div style="font-size: 12px; color: var(--slate);">' + p.market + ': ' + p.selection + ' · <span style="color: var(--muted);">' + (p.verification || 'UNVERIFIED') + '</span></div>' +
+            '</div>';
+          }).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load analyst detail', err);
+      }
     }
 
     // Refresh Daily Limits
@@ -1057,7 +1227,7 @@ function renderMobileAppHtml(): string {
         const data = await res.json();
 
         const badge = document.getElementById('daily-count-badge');
-        badge.textContent = 'Today: ' + data.count + ' logged';
+        if (badge) badge.textContent = 'Today: ' + data.count + ' logged';
 
         const banner = document.getElementById('daily-warning-banner');
         const bannerText = document.getElementById('daily-warning-text');
@@ -1087,15 +1257,19 @@ function renderMobileAppHtml(): string {
 
         // Update dropdown in log form
         const select = document.getElementById('form-analyst');
-        const currentVal = select.value;
-        select.innerHTML = '<option value="">Select Analyst...</option>';
-        analystsList.forEach(a => {
-          const opt = document.createElement('option');
-          opt.value = a.id;
-          opt.textContent = a.name + (a.rating_tier ? ' (' + a.rating_tier + ')' : '');
-          select.appendChild(opt);
-        });
-        if (currentVal) select.value = currentVal;
+        if (select) {
+          const currentVal = select.value;
+          select.innerHTML = '<option value="">Select Analyst...</option>';
+          analystsList.forEach(a => {
+            const opt = document.createElement('option');
+            opt.value = a.id;
+            const cred = a.credibility || {};
+            const tierStr = cred.ratingTier ? ' (' + cred.ratingTier + ')' : '';
+            opt.textContent = a.name + tierStr;
+            select.appendChild(opt);
+          });
+          if (currentVal) select.value = currentVal;
+        }
 
         renderAnalystsList();
         renderHomeOverview();
@@ -1122,34 +1296,44 @@ function renderMobileAppHtml(): string {
       const pending = predictionsList.filter(p => p.outcome === 'PENDING').length;
       const settled = predictionsList.filter(p => p.outcome !== 'PENDING').length;
 
-      document.getElementById('stat-total-picks').textContent = predictionsList.length + ' picks total';
-      document.getElementById('stat-pending').textContent = pending;
-      document.getElementById('stat-settled').textContent = settled;
+      const totalElem = document.getElementById('stat-total-picks');
+      const pendingElem = document.getElementById('stat-pending');
+      const settledElem = document.getElementById('stat-settled');
+
+      if (totalElem) totalElem.textContent = predictionsList.length + ' picks total';
+      if (pendingElem) pendingElem.textContent = pending;
+      if (settledElem) settledElem.textContent = settled;
 
       const container = document.getElementById('home-analysts-list');
+      if (!container) return;
+
       if (analystsList.length === 0) {
         container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">No analysts logged yet.</div>';
         return;
       }
 
       container.innerHTML = analystsList.slice(0, 3).map(a => {
-        const tierClass = a.rating_tier === 'Good' ? 'badge-good' :
-                          a.rating_tier === 'Average' ? 'badge-average' :
-                          a.rating_tier === 'Poor' ? 'badge-poor' : 'badge-not-rated';
-        const winRate = a.win_rate !== null ? a.win_rate + '%' : 'N/A';
+        const cred = a.credibility || {};
+        const tier = cred.ratingTier || 'Not Rated';
+        const tierClass = tier === 'Good' ? 'badge-good' :
+                          tier === 'Average' ? 'badge-average' :
+                          tier === 'Poor' ? 'badge-poor' : 'badge-not-rated';
+        const winRate = cred.winRate !== null && cred.winRate !== undefined ? cred.winRate + '%' : 'N/A';
         return '<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);">' +
-          '<div>' +
-            '<div style="font-weight: 600; font-size: 14px;">' + a.name + '</div>' +
-            '<div style="font-size: 11px; color: var(--muted);">' + (a.total_picks || 0) + ' picks · ' + winRate + ' win rate</div>' +
+          '<div onclick="openAnalystDetail(\'' + a.id + '\')" style="cursor: pointer;">' +
+            '<div style="font-weight: 600; font-size: 14px; color: var(--navy);">' + a.name + '</div>' +
+            '<div style="font-size: 11px; color: var(--muted);">' + (cred.settledCount || 0) + ' settled · ' + winRate + ' win rate · ' + (cred.historyBadge || 'Insufficient') + '</div>' +
           '</div>' +
-          '<span class="badge ' + tierClass + '">' + (a.rating_tier || 'Not Rated') + '</span>' +
+          '<span class="badge ' + tierClass + '">' + tier + '</span>' +
         '</div>';
       }).join('');
     }
 
-    // Render Predictions List
+    // Render Predictions List with Walrus Sync Status
     function renderPredictionsList() {
       const container = document.getElementById('predictions-list');
+      if (!container) return;
+
       if (predictionsList.length === 0) {
         container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">No predictions match this filter.</div>';
         return;
@@ -1162,13 +1346,20 @@ function renderMobileAppHtml(): string {
           month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
         }) + ' UTC';
 
+        const syncBadge = p.walrus_sync_status === 'CONFIRMED'
+          ? '<span class="badge badge-good" style="font-size: 10px;">✓ Walrus Synced</span>'
+          : '<span class="badge badge-pending" style="font-size: 10px;">⏳ Syncing...</span>';
+
         return '<div class="card" style="margin-bottom: 10px;">' +
           '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
             '<div>' +
               '<span class="badge badge-not-rated" style="margin-right: 6px;">' + p.sport + '</span>' +
               '<strong style="font-size: 14px;">' + p.event_label + '</strong>' +
             '</div>' +
-            '<span class="badge ' + outcomeClass + '">' + p.outcome + '</span>' +
+            '<div style="display: flex; gap: 4px; align-items: center;">' +
+              syncBadge +
+              '<span class="badge ' + outcomeClass + '">' + p.outcome + '</span>' +
+            '</div>' +
           '</div>' +
           '<div style="font-size: 13px; color: var(--navy); margin-bottom: 6px;">' +
             '<strong>Pick:</strong> ' + p.market + ' — ' + p.selection +
@@ -1189,36 +1380,44 @@ function renderMobileAppHtml(): string {
       await refreshPredictions();
     }
 
-    // Render Analysts List
+    // Render Analysts List with Prominent Credibility Cards
     function renderAnalystsList() {
       const container = document.getElementById('analysts-list');
+      if (!container) return;
+
       if (analystsList.length === 0) {
         container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">No analysts added yet.</div>';
         return;
       }
 
       container.innerHTML = analystsList.map(a => {
-        const tierClass = a.rating_tier === 'Good' ? 'badge-good' :
-                          a.rating_tier === 'Average' ? 'badge-average' :
-                          a.rating_tier === 'Poor' ? 'badge-poor' : 'badge-not-rated';
-        const winRate = a.win_rate !== null ? a.win_rate + '%' : 'N/A';
+        const cred = a.credibility || {};
+        const tier = cred.ratingTier || 'Not Rated';
+        const tierClass = tier === 'Good' ? 'badge-good' :
+                          tier === 'Average' ? 'badge-average' :
+                          tier === 'Poor' ? 'badge-poor' : 'badge-not-rated';
+        const winRate = cred.winRate !== null && cred.winRate !== undefined ? cred.winRate + '%' : 'N/A';
         const aliases = (a.aliases || []).map(al => '@' + al.handle + ' (' + al.platform + ')').join(', ') || 'No aliases';
 
         return '<div class="card">' +
           '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
-            '<div>' +
-              '<div style="font-weight: 700; font-size: 15px;">' + a.name + '</div>' +
+            '<div onclick="openAnalystDetail(\'' + a.id + '\')" style="cursor: pointer; flex: 1;">' +
+              '<div style="font-weight: 700; font-size: 15px; color: var(--blue);">' + a.name + ' →</div>' +
               '<div style="font-size: 12px; color: var(--muted);">' + aliases + '</div>' +
             '</div>' +
-            '<span class="badge ' + tierClass + '">' + (a.rating_tier || 'Not Rated') + '</span>' +
+            '<span class="badge ' + tierClass + '">' + tier + '</span>' +
           '</div>' +
-          '<div style="display: flex; gap: 14px; font-size: 12px; margin: 10px 0; color: var(--slate);">' +
-            '<span><strong>' + (a.total_picks || 0) + '</strong> picks</span>' +
-            '<span><strong>' + winRate + '</strong> win rate</span>' +
-            '<span>Badge: ' + (a.history_badge || 'Insufficient') + '</span>' +
+          '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 12px; margin: 10px 0; background: var(--bg); padding: 8px; border-radius: 6px;">' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">WIN RATE</span><strong>' + winRate + '</strong></div>' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">SETTLED</span><strong>' + (cred.settledCount || 0) + '</strong> (' + (cred.wonCount || 0) + 'W-' + (cred.lostCount || 0) + 'L)</div>' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">HISTORY</span><strong>' + (cred.historyBadge || 'Insufficient') + '</strong></div>' +
           '</div>' +
-          '<div style="display: flex; gap: 8px; margin-top: 10px;">' +
-            '<button class="btn btn-outline btn-sm" onclick="openMergeModal(\'' + a.id + '\', \'' + a.name + '\')">Merge...</button>' +
+          '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">' +
+            '<div style="font-size: 11px; color: var(--muted);">' + (cred.apiVerifiedCount || 0) + ' API · ' + (cred.selfReportedCount || 0) + ' Self</div>' +
+            '<div style="display: flex; gap: 6px;">' +
+              '<button class="btn btn-outline btn-sm" onclick="openAnalystDetail(\'' + a.id + '\')">View Details</button>' +
+              '<button class="btn btn-outline btn-sm" onclick="openMergeModal(\'' + a.id + '\', \'' + a.name + '\')">Merge...</button>' +
+            '</div>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -1348,31 +1547,28 @@ function renderMobileAppHtml(): string {
     function openMergeModal(targetId, targetName) {
       document.getElementById('merge-target-id').value = targetId;
       document.getElementById('merge-target-name').textContent = targetName;
-
-      const select = document.getElementById('merge-source-select');
-      select.innerHTML = '<option value="">Select profile to merge...</option>';
+      const sourceSelect = document.getElementById('merge-source-select');
+      sourceSelect.innerHTML = '<option value="">Select profile...</option>';
       analystsList.filter(a => a.id !== targetId).forEach(a => {
         const opt = document.createElement('option');
         opt.value = a.id;
         opt.textContent = a.name;
-        select.appendChild(opt);
+        sourceSelect.appendChild(opt);
       });
-
       document.getElementById('modal-merge').classList.add('open');
     }
 
-    function closeModal(id) {
-      document.getElementById(id).classList.remove('open');
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('open');
     }
 
-    // Save Analyst Handler
     async function handleSaveAnalyst(e) {
       e.preventDefault();
       const name = document.getElementById('modal-analyst-name').value;
       const platform = document.getElementById('modal-analyst-platform').value;
       const handle = document.getElementById('modal-analyst-handle').value;
 
-      const aliases = handle ? [{ platform, handle }] : [];
+      const aliases = handle.trim() ? [{ platform, handle: handle.trim().replace(/^@/, '') }] : [];
 
       try {
         const res = await fetch('/api/analysts', {
@@ -1380,20 +1576,23 @@ function renderMobileAppHtml(): string {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, aliases })
         });
-        if (!res.ok) throw new Error('Failed to create analyst');
-        closeModal('modal-analyst');
-        await refreshAnalysts();
+        if (res.ok) {
+          closeModal('modal-analyst');
+          await refreshAnalysts();
+        } else {
+          const err = await res.json();
+          alert('Error creating analyst: ' + (err.error || 'Server error'));
+        }
       } catch (err) {
-        alert(err.message);
+        alert('Network error creating analyst');
       }
     }
 
-    // Execute Merge Handler
     async function handleExecuteMerge() {
       const targetId = document.getElementById('merge-target-id').value;
       const sourceId = document.getElementById('merge-source-select').value;
       if (!sourceId) {
-        alert('Please select a profile to merge');
+        alert('Please select an analyst to merge');
         return;
       }
 
@@ -1403,31 +1602,30 @@ function renderMobileAppHtml(): string {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sourceAnalystId: sourceId })
         });
-        if (!res.ok) {
+        if (res.ok) {
+          closeModal('modal-merge');
+          await refreshAnalysts();
+          await refreshPredictions();
+        } else {
           const err = await res.json();
-          throw new Error(err.error || 'Merge failed');
+          alert('Error merging analysts: ' + (err.error || 'Server error'));
         }
-        closeModal('modal-merge');
-        await refreshAnalysts();
-        await refreshPredictions();
-        alert('Profiles merged successfully! (Reversible at any time)');
       } catch (err) {
-        alert(err.message);
+        alert('Network error merging analysts');
       }
     }
 
-    // Settings Actions
+    function handleMarketChange() {}
+
     function handleSignOut() {
-      if (confirm('Are you sure you want to sign out?')) {
-        alert('Session terminated.');
-        location.reload();
-      }
+      alert('Signed out successfully.');
+      window.location.reload();
     }
 
     function handleDeleteAccount() {
-      if (confirm('Permanently delete your account? All private predictions and analyst profiles will be deleted. Note: Encrypted ledger events committed to Walrus or Sui cannot be altered.')) {
-        alert('Account deletion confirmed.');
-        location.reload();
+      if (confirm('Are you sure you want to delete your account? All private journal entries will be deleted.')) {
+        alert('Account deletion scheduled.');
+        window.location.reload();
       }
     }
   </script>

@@ -86,6 +86,10 @@ export async function runWebServerIntegrationTests(): Promise<{
     assert(!ui.data.includes('Weekly scorecards'), 'Settings does not contain unapproved weekly scorecards');
     assert(!ui.data.includes('Kickoff reminder'), 'Settings does not contain unapproved kickoff reminders');
     assert(!ui.data.includes('Export Data') && !ui.data.includes('Data Export'), 'Settings does not contain unapproved data export');
+    assert(ui.data.includes('id="screen-analyst-detail"'), 'Phase 4: Analyst Detail screen exists in HTML');
+    assert(ui.data.includes('id="analyst-credibility-preview"'), 'Phase 4: Inline credibility preview exists in logging form');
+    assert(ui.data.includes('id="detail-rating-tier-badge"') && ui.data.includes('id="detail-win-rate"'), 'Phase 4: Credibility scorecard card exists in HTML');
+    assert(ui.data.includes('id="detail-walrus-status"'), 'Phase 4: Decentralized Walrus sync status indicator exists');
 
     // Setup Test User
     const suffix = Date.now();
@@ -128,6 +132,14 @@ export async function runWebServerIntegrationTests(): Promise<{
     const listRes = await request('/api/analysts', { headers: userHeaders });
     assert(listRes.status === 200, 'List analysts returns 200');
     assert(listRes.data.analysts.length >= 1, 'Analyst list contains newly created analyst');
+
+    // 5b. Phase 4 Analyst Detail Endpoint
+    const detailRes = await request(`/api/analysts/${analystId}`, { headers: userHeaders });
+    assert(detailRes.status === 200, 'Phase 4: Analyst detail endpoint returns 200');
+    assert(detailRes.data.credibility !== undefined, 'Phase 4: Analyst detail returns credibility scorecard');
+    assert(detailRes.data.credibility.ratingTier === 'Not Rated', 'Phase 4: Fresh analyst rating tier is Not Rated');
+    assert(detailRes.data.credibility.historyBadge === 'Insufficient', 'Phase 4: Fresh analyst history badge is Insufficient');
+    assert(Array.isArray(detailRes.data.predictions), 'Phase 4: Analyst detail includes predictions array');
 
     // 6. Prediction Logging via API
     const futureKickoff = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
@@ -190,6 +202,9 @@ export async function runWebServerIntegrationTests(): Promise<{
     assert(pastRes.status === 400, 'Past kickoff prediction rejected with HTTP 400');
 
   } finally {
+    if (typeof (server as any).closeAllConnections === 'function') {
+      (server as any).closeAllConnections();
+    }
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
 

@@ -28,6 +28,8 @@ export interface OutboxWorkerOptions {
   maxAttempts?: number;
   walrusClientOverride?: any;
   userId?: string;
+  concurrent?: boolean;
+  concurrency?: number;
 }
 
 /**
@@ -111,8 +113,8 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
     `, [ids]);
     await client.query('COMMIT');
 
-    // 2. Process each outbox item
-    for (const item of outboxRes.rows) {
+    // 2. Process outbox items (sequentially by default, concurrently if option set)
+    const processSingleItem = async (item: typeof outboxRes.rows[0]) => {
       result.processed++;
 
       const parsed = parseStructuredMemory(item.payload);
@@ -124,7 +126,7 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
           WHERE id = $1;
         `, [item.id]);
         result.failed++;
-        continue;
+        return;
       }
 
       const prefix = process.env.MEMWAL_NAMESPACE_PREFIX || 'wwr-';
@@ -144,7 +146,7 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
         } else {
           // Live Walrus Mainnet Integration
           const walrus = getWalrusClientForUser(item.user_id);
-          const writeRes = await walrus.rememberAndWait(item.payload, { timeoutMs: 60000 });
+          const writeRes = await walrus.rememberAndWait(item.payload, { timeoutMs: 120000 });
           jobId = writeRes.job_id || writeRes.id;
           blobId = writeRes.blob_id;
           proofRef = writeRes.owner || null;
@@ -180,6 +182,7 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
         });
 
       } catch (err: any) {
+        console.error(`[WALRUS ERROR item ${item.id}]:`, err?.message || err);
         const nextAttempts = item.attempts + 1;
         const errorMsg = err.message || 'Walrus write failure';
 
@@ -204,6 +207,12 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
           result.retried++;
         }
       }
+    };
+
+    const concurrency = options.concurrency || (options.concurrent ? 2 : 1);
+    for (let i = 0; i < outboxRes.rows.length; i += concurrency) {
+      const chunk = outboxRes.rows.slice(i, i + concurrency);
+      await Promise.all(chunk.map(processSingleItem));
     }
 
   } finally {
@@ -233,4 +242,43 @@ export async function reconstructUserHistoryFromWalrus(
   const encryptionKey = getAppEncryptionKey();
 
   return reconstructFromWalrusMemories(rawMemories, targetAnalystId, encryptionKey);
+}
+
+/**
+ * Recovers crashed IN_FLIGHT outbox items that have been stale longer than staleMinutes
+ */
+export async function recoverStaleInFlightOutbox(staleMinutes = 5): Promise<number> {
+  const pool = getDbPool();
+  const res = await pool.query(`
+    UPDATE memory_outbox
+    SET status = 'PENDING',
+        attempts = attempts + 1,
+        next_retry_at = NOW(),
+        error_message = 'Recovered from stale IN_FLIGHT state after worker interruption',
+        updated_at = NOW()
+    WHERE status = 'IN_FLIGHT'
+      AND updated_at < NOW() - ($1 || ' minutes')::interval
+    RETURNING id;
+  `, [staleMinutes]);
+
+  return res.rowCount || 0;
+}
+
+/**
+ * Recovers a FAILED outbox item back to PENDING for manual or administrative retry
+ */
+export async function resetFailedOutboxItem(id: string): Promise<boolean> {
+  const pool = getDbPool();
+  const res = await pool.query(`
+    UPDATE memory_outbox
+    SET status = 'PENDING',
+        attempts = 0,
+        error_message = NULL,
+        next_retry_at = NOW(),
+        updated_at = NOW()
+    WHERE id = $1 AND status = 'FAILED'
+    RETURNING id;
+  `, [id]);
+
+  return (res.rowCount || 0) > 0;
 }

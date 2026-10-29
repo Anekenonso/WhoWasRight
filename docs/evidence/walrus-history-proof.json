@@ -1,0 +1,163 @@
+{
+  "testSuite": "Gate 2: Real Encrypted History Recovery on Walrus Mainnet",
+  "executionTimestamp": "2026-10-29T22:56:20.809Z",
+  "testUser": {
+    "userId": "0279b56d-2028-447d-bc75-191e8c37478c",
+    "namespace": "wwr-0279b56d-2028-447d-bc75-191e8c37478c"
+  },
+  "analyst": {
+    "id": "7ed1ef7a-fa74-43cd-98da-07bd65dbb65a",
+    "displayName": "Synthetic Analyst 1793314580809"
+  },
+  "walrusConfiguration": {
+    "serverUrl": "https://relayer.memory.walrus.xyz",
+    "accountId": "0xc2225f53b9cb17f56253766942908c2ebb41c1e99dfecb774bb182e3e9841090",
+    "network": "mainnet"
+  },
+  "events": [
+    {
+      "sequenceNumber": 1,
+      "eventType": "CREATED",
+      "eventKey": "gate2-created-synth-pred-1-1793314580809",
+      "jobId": "b42f1fa8-9a5c-459f-83b1-30e23b0651b2",
+      "blobId": "I4Tz72Rb2py507FOAUYmpNGBGjhoNHIa1ly3hCjK2Ls",
+      "confirmedAt": "2026-10-29T22:56:55.037Z"
+    },
+    {
+      "sequenceNumber": 2,
+      "eventType": "CREATED",
+      "eventKey": "gate2-created-synth-pred-2-1793314580809",
+      "jobId": "38bf133d-ae84-47b5-b1ed-aefff7b265c0",
+      "blobId": "t0aeIehIsMpiscwZyeabyJOs1Zl82auFHabXQqWrRQI",
+      "confirmedAt": "2026-10-29T22:56:54.407Z"
+    },
+    {
+      "sequenceNumber": 3,
+      "eventType": "CREATED",
+      "eventKey": "gate2-created-synth-pred-3-1793314580809",
+      "jobId": "606661f8-cf24-48d9-9ee8-7c99afea928b",
+      "blobId": "gbqLIr1njOQEXizSu4pO2F8JTXEYpndKWkBTXFPqBRw",
+      "confirmedAt": "2026-10-29T22:57:19.875Z"
+    },
+    {
+      "sequenceNumber": 4,
+      "eventType": "CREATED",
+      "eventKey": "gate2-created-synth-pred-4-1793314580809",
+      "jobId": "9b5f0691-4fb9-407b-8d33-9b405f49a9a9",
+      "blobId": "682E8H7cMehsY8Ya_tRl1r0cWxCMBW8klt6NIvsoJSc",
+      "confirmedAt": "2026-10-29T22:57:19.180Z"
+    },
+    {
+      "sequenceNumber": 5,
+      "eventType": "CREATED",
+      "eventKey": "gate2-created-synth-pred-5-1793314580809",
+      "jobId": "8a2f5032-1898-4e8d-a89a-8621984ea11e",
+      "blobId": "H6bP5wJ2A4--3tSZWVNxVDoBuAx32g6-RO_APi5gaxI",
+      "confirmedAt": "2026-10-29T22:57:42.644Z"
+    },
+    {
+      "sequenceNumber": 6,
+      "eventType": "CREATED",
+      "eventKey": "gate2-created-synth-pred-6-1793314580809",
+      "jobId": "c6d6ed82-1324-4a1c-a2e1-f5f115a55036",
+      "blobId": "4iprrYvarmaNV7f_qEjvZrDW4BZ0PF4wOiEEAGXe8e0",
+      "confirmedAt": "2026-10-29T22:57:48.623Z"
+    },
+    {
+      "sequenceNumber": 7,
+      "eventType": "SETTLED",
+      "eventKey": "gate2-settled-synth-pred-1-1793314580809",
+      "jobId": "7416ceb2-1469-4c41-b5c6-4f9f80283034",
+      "blobId": "wDc-zV69Os9N5IGELMNxNuYzrwF99uJs3DDGG3pE_A0",
+      "confirmedAt": "2026-10-29T22:58:13.052Z"
+    },
+    {
+      "sequenceNumber": 8,
+      "eventType": "SETTLED",
+      "eventKey": "gate2-settled-synth-pred-2-1793314580809",
+      "jobId": "fee55650-e67e-41e9-b26f-4dc6b4010a1b",
+      "blobId": "YEA1QrH0UA5Vbeb4UW9-W3TKFbgZLa11zEDJdCbkges",
+      "confirmedAt": "2026-10-29T22:58:08.629Z"
+    },
+    {
+      "sequenceNumber": 9,
+      "eventType": "SETTLED",
+      "eventKey": "gate2-settled-synth-pred-3-1793314580809",
+      "jobId": "d9faf4e1-20ef-48cf-955a-c9a768347e55",
+      "blobId": "PRpwfZGZ4OBjoF1RGG9-SKImYx4NEEFegtfVrwSsDOE",
+      "confirmedAt": "2026-10-29T22:58:39.968Z"
+    },
+    {
+      "sequenceNumber": 10,
+      "eventType": "SETTLED",
+      "eventKey": "gate2-settled-synth-pred-4-1793314580809",
+      "jobId": "0d4bff1b-26a8-4517-b4df-83615bf0e0fc",
+      "blobId": "Rf3vLTSJ2rCsLqudrZ9wDHd9fHoVqvksqovx6w_BqVw",
+      "confirmedAt": "2026-10-29T22:58:43.319Z"
+    },
+    {
+      "sequenceNumber": 11,
+      "eventType": "SETTLED",
+      "eventKey": "gate2-settled-synth-pred-5-1793314580809",
+      "jobId": "74b91ac3-c73c-41f7-8511-90d2b8ac2686",
+      "blobId": "kqYMQmx7CsU7gUtj-bD9meV4ieku_CUQDrJQu5gLOj0",
+      "confirmedAt": "2026-10-29T22:59:20.666Z"
+    },
+    {
+      "sequenceNumber": 12,
+      "eventType": "SETTLED",
+      "eventKey": "gate2-settled-synth-pred-6-1793314580809",
+      "jobId": "e315c698-373f-4318-9997-6e56c1207d52",
+      "blobId": "ipsueADgJrzHP41zQwMintOliOt6WxPrdPPYMP5_E-M",
+      "confirmedAt": "2026-10-29T22:59:18.970Z"
+    }
+  ],
+  "correctionEvent": {
+    "sequenceNumber": 13,
+    "eventType": "CORRECTED",
+    "previousOutcome": "WON",
+    "newOutcome": "LOST",
+    "reason": "VAR review overturned goal",
+    "jobId": "3b2a1752-65d3-44a1-a644-2d16f0176fda",
+    "blobId": "n0x3v9J9_bYBLiOQuVLBYJsCVOjRMbpLFAmpDlEnBJk"
+  },
+  "reconstructionEvidence": {
+    "initialState": {
+      "eventsCount": 12,
+      "settledCount": 6,
+      "wonCount": 4,
+      "lostCount": 2,
+      "winRate": 66.67,
+      "ratingTier": "Good",
+      "historyBadge": "Limited"
+    },
+    "correctedState": {
+      "eventsCount": 13,
+      "settledCount": 6,
+      "wonCount": 3,
+      "lostCount": 3,
+      "winRate": 50,
+      "ratingTier": "Average"
+    },
+    "gapDetectionProof": {
+      "gapInjectedAtSequence": 5,
+      "detectedGaps": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "failsClosed": true
+    },
+    "tamperDetectionProof": {
+      "corruptedSequence": 1,
+      "tamperedCount": 1,
+      "failsClosed": true
+    }
+  },
+  "status": "VERIFIED_PASS"
+}

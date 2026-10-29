@@ -12,11 +12,11 @@
 
 import { adjudicateFootballPrediction, type MatchScoreEvidence } from '../../src/core/settlement.ts';
 
-export async function runSettlementUnitTests(): Promise<{
+export function runSettlementUnitTests(): {
   passed: boolean;
   count: number;
   failures: string[];
-}> {
+} {
   const failures: string[] = [];
   let count = 0;
 
@@ -154,13 +154,8 @@ export async function runSettlementUnitTests(): Promise<{
 }
 
 if (process.argv[1]?.replace(/\\/g, '/').endsWith('settlement.test.ts')) {
-  runSettlementUnitTests()
-    .then(r => {
-      console.log(`\nSettlement Unit Tests: ${r.count - r.failures.length}/${r.count} passed.`);
-      process.exit(r.passed ? 0 : 1);
-    })
-    .catch(err => {
-      console.error(err);
-      process.exit(1);
-    });
+  const r = runSettlementUnitTests();
+  console.log(`\nSettlement Unit Tests: ${r.count - r.failures.length}/${r.count} passed.`);
+  process.exit(r.passed ? 0 : 1);
 }
+

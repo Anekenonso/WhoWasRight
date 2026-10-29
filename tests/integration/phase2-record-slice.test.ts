@@ -78,11 +78,13 @@ export async function runPhase2IntegrationTests(): Promise<{
     const removedAlias = await removeAnalystAlias(userA, alias2.id);
     assert(removedAlias === true, 'Alias removed successfully');
 
-    // 3. Reversible Analyst Merge
-    // Create second analyst for User A: "Carra Alternate"
-    const analyst2 = await createAnalyst(userA, 'Carra Alternate');
+    // 3. Reversible Analyst Merge: A + B, A + B + C, Chains & Cycles
+    // Create second analyst B: "Carra Alternate"
+    const analystB = await createAnalyst(userA, 'Carra Alternate');
+    // Create third analyst C: "Carra Third"
+    const analystC = await createAnalyst(userA, 'Carra Third');
 
-    // Create a match and log prediction under analyst2
+    // Create a match and log predictions
     const kickoff = new Date(Date.now() + 7200000); // 2 hours future
     const event1 = await createEvent({
       userId: userA,
@@ -91,38 +93,113 @@ export async function runPhase2IntegrationTests(): Promise<{
       source: 'USER_REPORTED',
     });
 
-    const predB = await createPrediction({
+    // 1 pick on A
+    await createPrediction({
       userId: userA,
       eventId: event1.id,
-      analystId: analyst2.id,
+      analystId: analyst1.id,
       market: '1X2',
       selection: 'Liverpool',
     });
-    assert(predB.analyst_id === analyst2.id, 'Prediction logged under Analyst 2');
 
-    // Merge analyst2 into analyst1
-    const mergeRes = await mergeAnalysts(userA, analyst2.id, analyst1.id);
-    assert(mergeRes.success === true, 'Merge operation succeeded');
+    // 1 pick on B
+    const predB = await createPrediction({
+      userId: userA,
+      eventId: event1.id,
+      analystId: analystB.id,
+      market: 'TOTAL_GOALS',
+      selection: 'Over 2.5',
+    });
+    assert(predB.analyst_id === analystB.id, 'Prediction logged under Analyst B');
 
-    // Check listAnalysts: Analyst 2 is hidden from active list
-    const activeList = await listAnalysts(userA);
-    const hasAnalyst2 = activeList.some(a => a.id === analyst2.id);
-    const parent = activeList.find(a => a.id === analyst1.id);
-    assert(!hasAnalyst2, 'Merged Analyst 2 hidden from top-level active list');
-    assert(parent?.credibility?.totalPredictions === 1, 'Target Analyst 1 inherited prediction count from merged analyst');
+    // 1 pick on C
+    const predC = await createPrediction({
+      userId: userA,
+      eventId: event1.id,
+      analystId: analystC.id,
+      market: 'BTTS',
+      selection: 'Yes',
+    });
+    assert(predC.analyst_id === analystC.id, 'Prediction logged under Analyst C');
 
-    // Check detail of Analyst 1: includes Analyst 2 in mergedAnalysts
+    // 3a. A + B merge: Merge B into A
+    const mergeResAB = await mergeAnalysts(userA, analystB.id, analyst1.id);
+    assert(mergeResAB.success === true, 'Merge A + B succeeded');
+
+    // Active list check after A + B
+    let activeList = await listAnalysts(userA);
+    assert(!activeList.some(a => a.id === analystB.id), 'Merged Analyst B hidden from top-level active list');
+    let parentA = activeList.find(a => a.id === analyst1.id);
+    assert(parentA?.credibility?.totalPredictions === 2, 'Target Analyst A inherited predictions from B (total 2)');
+
+    // 3b. A + B + C merge: Merge C into A as well
+    const mergeResAC = await mergeAnalysts(userA, analystC.id, analyst1.id);
+    assert(mergeResAC.success === true, 'Merge A + B + C succeeded (C merged into root A)');
+
+    activeList = await listAnalysts(userA);
+    assert(!activeList.some(a => a.id === analystC.id), 'Merged Analyst C hidden from top-level active list');
+    parentA = activeList.find(a => a.id === analyst1.id);
+    assert(parentA?.credibility?.totalPredictions === 3, 'Target Analyst A has picks from A, B, and C (total 3, no duplicates)');
+
+    // Detail check: A has 2 merged sub-analysts
     const detailA = await getAnalystDetail(userA, analyst1.id);
-    assert(detailA?.mergedAnalysts?.length === 1, 'Detail includes 1 merged sub-analyst');
-    assert(detailA?.mergedAnalysts?.[0].id === analyst2.id, 'Merged sub-analyst is Analyst 2');
+    assert(detailA?.mergedAnalysts?.length === 2, 'Detail of A includes 2 merged sub-analysts (B and C)');
 
-    // Reverse the merge (Unmerge)
-    const unmergeRes = await unmergeAnalyst(userA, analyst2.id);
-    assert(unmergeRes.success === true, 'Unmerge operation succeeded');
+    // 3c. Chain Prevention: Attempt to merge into an already merged target (e.g. try merging into B)
+    const analystD = await createAnalyst(userA, 'Carra Fourth');
+    let chainMergeBlocked = false;
+    try {
+      await mergeAnalysts(userA, analystD.id, analystB.id);
+    } catch (err: any) {
+      chainMergeBlocked = err.message.includes('merged into another profile');
+    }
+    assert(chainMergeBlocked, 'Merge chain blocked: cannot merge into an already merged profile');
 
-    // Check listAnalysts post-unmerge: Analyst 2 is active again
-    const postUnmergeList = await listAnalysts(userA);
-    assert(postUnmergeList.length === 2, 'Both analysts active again after unmerge (Reversibility proven)');
+    // 3d. Already-Merged Source Prevention: Attempt to merge B into D
+    let mergedSourceBlocked = false;
+    try {
+      await mergeAnalysts(userA, analystB.id, analystD.id);
+    } catch (err: any) {
+      mergedSourceBlocked = err.message.includes('already merged');
+    }
+    assert(mergedSourceBlocked, 'Merge chain blocked: cannot merge an analyst that is already merged');
+
+    // 3e. Cycle Prevention: Attempt to merge root A into child B
+    let cycleBlocked = false;
+    try {
+      await mergeAnalysts(userA, analyst1.id, analystB.id);
+    } catch {
+      cycleBlocked = true;
+    }
+    assert(cycleBlocked, 'Cycle attempt blocked: cannot merge parent into child');
+
+    // Self-merge attempt
+    let selfMergeBlocked = false;
+    try {
+      await mergeAnalysts(userA, analystD.id, analystD.id);
+    } catch (err: any) {
+      selfMergeBlocked = err.message.includes('Cannot merge an analyst into themselves');
+    }
+    assert(selfMergeBlocked, 'Self-merge attempt blocked');
+
+    // 3f. Reverse Merge: Unmerge C
+    const unmergeResC = await unmergeAnalyst(userA, analystC.id);
+    assert(unmergeResC.success === true, 'Unmerge C succeeded');
+
+    activeList = await listAnalysts(userA);
+    const hasCActive = activeList.some(a => a.id === analystC.id);
+    assert(hasCActive, 'Analyst C is active again with independent profile');
+    parentA = activeList.find(a => a.id === analyst1.id);
+    assert(parentA?.credibility?.totalPredictions === 2, 'Analyst A retains only A + B (total 2)');
+
+    // Unmerge B
+    const unmergeResB = await unmergeAnalyst(userA, analystB.id);
+    assert(unmergeResB.success === true, 'Unmerge B succeeded');
+
+    activeList = await listAnalysts(userA);
+    assert(activeList.length === 4, 'All analysts (A, B, C, D) active again after unmerges (Reversibility proven)');
+    parentA = activeList.find(a => a.id === analyst1.id);
+    assert(parentA?.credibility?.totalPredictions === 1, 'Analyst A restored to exactly 1 original prediction');
 
     // 4. Cross-User Authorization
     let crossUserRenameCaught = false;
@@ -135,11 +212,11 @@ export async function runPhase2IntegrationTests(): Promise<{
 
     let crossUserMergeCaught = false;
     try {
-      await mergeAnalysts(userB, analyst1.id, analyst2.id);
+      await mergeAnalysts(userB, analyst1.id, analystB.id);
     } catch {
       crossUserMergeCaught = true;
     }
-    assert(crossUserMergeCaught, 'User B rejected from merging User A analysts');
+    assert(crossUserMergeCaught, 'User B rejected from merging User A analysts (Cross-user merge blocked)');
 
     // 5. Prediction Flow: Multi-pick vs Duplicate Prevention
     // Multi-pick: Analyst 1 logs 2nd distinct market on event 1
@@ -147,20 +224,20 @@ export async function runPhase2IntegrationTests(): Promise<{
       userId: userA,
       eventId: event1.id,
       analystId: analyst1.id,
-      market: 'TOTAL_GOALS',
-      selection: 'Over 2.5',
+      market: 'CUSTOM',
+      selection: 'Arsenal or Draw',
     });
-    assert(predMulti.market === 'TOTAL_GOALS', 'Multi-pick allowed for same event');
+    assert(predMulti.market === 'CUSTOM', 'Multi-pick allowed for same event');
 
-    // Exact duplicate rejection
+    // Exact duplicate rejection: Analyst 1 already has 1X2 Liverpool on event 1
     let dupCaught = false;
     try {
       await createPrediction({
         userId: userA,
         eventId: event1.id,
         analystId: analyst1.id,
-        market: 'TOTAL_GOALS',
-        selection: 'Over 2.5',
+        market: '1X2',
+        selection: 'Liverpool',
       });
     } catch (e: unknown) {
       dupCaught = (e as Error).message.includes('Duplicate prediction');

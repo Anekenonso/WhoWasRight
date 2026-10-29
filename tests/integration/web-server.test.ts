@@ -77,6 +77,10 @@ export async function runWebServerIntegrationTests(): Promise<{
     assert(ui.data.includes('Add Another Prediction') && ui.data.includes('Back to Home'), 'Post-save inline actions exist');
     assert(ui.data.includes('Quick Paste Assistant'), 'Paste assistant component exists');
     assert(ui.data.includes('Merge Analyst Profiles'), 'Reversible merge modal exists');
+    assert(ui.data.includes('id="tab-home"') && ui.data.includes('id="tab-predictions"'), 'Approved bottom nav: Home & Predictions');
+    assert(ui.data.includes('id="tab-analysts"') && ui.data.includes('id="tab-settings"'), 'Approved bottom nav: Analysts & Settings');
+    assert(ui.data.includes('id="screen-settings"'), 'Settings screen restored and accessible');
+    assert(ui.data.includes('+ Log Pick'), 'Quick Log Pick action accessible from top bar');
 
     // Setup Test User
     const suffix = Date.now();
@@ -202,3 +206,4 @@ if (process.argv[1]?.endsWith('web-server.test.ts')) {
       process.exitCode = 1;
     });
 }
+

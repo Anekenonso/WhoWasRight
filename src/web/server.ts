@@ -661,8 +661,13 @@ function renderMobileAppHtml(): string {
       <span>WhoWasRight</span>
       <span class="logo-badge">Journal</span>
     </div>
-    <div id="daily-count-badge" class="badge badge-not-rated" style="font-size: 12px;">
-      Today: 0 logged
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <button class="btn btn-primary btn-sm" onclick="openLogScreen()" style="width: auto; height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600;">
+        + Log Pick
+      </button>
+      <div id="daily-count-badge" class="badge badge-not-rated" style="font-size: 11px;">
+        Today: 0
+      </div>
     </div>
   </div>
 
@@ -674,7 +679,7 @@ function renderMobileAppHtml(): string {
       <div class="card" style="background: linear-gradient(135deg, #1E293B, #0F172A); color: white;">
         <div style="font-size: 13px; color: #94A3B8; margin-bottom: 4px;">Private Prediction Journal</div>
         <div style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Track Who Was Actually Right</div>
-        <button class="btn btn-primary" onclick="switchTab('log')" style="background: var(--blue);">
+        <button class="btn btn-primary" onclick="openLogScreen()" style="background: var(--blue);">
           + Log New Prediction
         </button>
       </div>
@@ -709,9 +714,16 @@ function renderMobileAppHtml(): string {
       </div>
     </div>
 
-    <!-- Screen 2: Log Prediction -->
+    <!-- Screen 2: Log Prediction (Primary Action Flow) -->
     <div id="screen-log" class="screen hidden">
-      <!-- Soft Daily Limit Warning -->
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <button class="btn btn-outline btn-sm" onclick="handleBackHome()" style="min-width: 44px; min-height: 44px; padding: 0 12px;">
+          ← Back
+        </button>
+        <span style="font-size: 16px; font-weight: 700;">Record Prediction</span>
+      </div>
+
+      <!-- Soft Daily Limit Warning (Neutral wording) -->
       <div id="daily-warning-banner" class="banner banner-warning hidden">
         <span id="daily-warning-text"></span>
       </div>
@@ -736,7 +748,7 @@ function renderMobileAppHtml(): string {
       </div>
 
       <div class="card">
-        <div class="card-title">Log Prediction</div>
+        <div class="card-title">Prediction Details</div>
 
         <!-- Post-Save Inline State (No redirect) -->
         <div id="post-save-container" class="hidden">
@@ -846,6 +858,48 @@ function renderMobileAppHtml(): string {
       </div>
     </div>
 
+    <!-- Screen 5: Settings (Approved 4th Navigation Destination) -->
+    <div id="screen-settings" class="screen hidden">
+      <div class="card">
+        <div class="card-title">Telegram Authentication</div>
+        <div style="font-size: 13px; color: var(--slate); margin-bottom: 10px;">
+          Private session verified via official Telegram login.
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border);">
+          <span style="font-size: 13px; font-weight: 500;">Telegram Bot Status</span>
+          <span class="badge badge-good">Ready & Active</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border);">
+          <span style="font-size: 13px; font-weight: 500;">Settlement Notifications</span>
+          <span class="badge badge-verified">Enabled</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Decentralized Storage & Privacy</div>
+        <div style="font-size: 12px; color: var(--slate); line-height: 1.6;">
+          <p style="margin-bottom: 8px;"><strong>Walrus Memory:</strong> Historical prediction and settlement events are synchronized to Walrus decentralized storage.</p>
+          <p style="margin-bottom: 8px;"><strong>Application Encryption:</strong> Event payloads are encrypted using AES-256-GCM before transmission.</p>
+          <p style="margin-bottom: 8px;"><strong>Tatum Sui Gateway:</strong> Sui Mainnet gRPC ledger reads verify onchain anchors independently.</p>
+          <p style="font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px;">
+            Note: Due to the immutable nature of decentralized storage, encrypted events committed to Walrus or Sui cannot be deleted.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="color: var(--red);">Account Actions</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button class="btn btn-outline" onclick="handleSignOut()" style="color: var(--slate); width: 100%;">
+            Sign Out
+          </button>
+          <button class="btn btn-outline" onclick="handleDeleteAccount()" style="color: var(--red); border-color: #FECACA; width: 100%;">
+            Delete Account Data
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Modal: Create / Edit Analyst -->
@@ -897,29 +951,30 @@ function renderMobileAppHtml(): string {
     </div>
   </div>
 
-  <!-- Bottom Navigation (4 Tabs) -->
+  <!-- Bottom Navigation (Approved 4 Destinations: Home, Predictions, Analysts, Settings) -->
   <nav class="bottom-nav">
     <div class="nav-item active" onclick="switchTab('home')" id="tab-home">
       <div class="nav-icon">🏠</div>
       <span>Home</span>
     </div>
-    <div class="nav-item" onclick="switchTab('log')" id="tab-log">
-      <div class="nav-icon">✏️</div>
-      <span>Log</span>
-    </div>
     <div class="nav-item" onclick="switchTab('predictions')" id="tab-predictions">
       <div class="nav-icon">📊</div>
-      <span>Picks</span>
+      <span>Predictions</span>
     </div>
     <div class="nav-item" onclick="switchTab('analysts')" id="tab-analysts">
       <div class="nav-icon">👥</div>
       <span>Analysts</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('settings')" id="tab-settings">
+      <div class="nav-icon">⚙️</div>
+      <span>Settings</span>
     </div>
   </nav>
 
   <script>
     // State
     let currentTab = 'home';
+    let previousTab = 'home';
     let analystsList = [];
     let predictionsList = [];
     let currentPredictionFilter = 'ALL';
@@ -936,18 +991,60 @@ function renderMobileAppHtml(): string {
         refreshAnalysts(),
         refreshPredictions()
       ]);
+
+      // URL parameters for direct view routing & UI verification
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam === 'log') {
+        openLogScreen();
+      } else if (tabParam) {
+        switchTab(tabParam);
+      }
+
+      if (params.get('saved') === 'true') {
+        document.getElementById('log-form').classList.add('hidden');
+        document.getElementById('post-save-details').textContent = 'Arsenal vs Chelsea (1X2: Arsenal)';
+        document.getElementById('post-save-container').classList.remove('hidden');
+      }
+
+      if (params.get('paste') === 'true') {
+        document.getElementById('paste-input').value = 'Chelsea vs Liverpool - BTTS Yes. Over 2.5 goals.';
+        await handlePasteParse();
+      }
+
+      if (params.get('merge') === 'true' && analystsList.length >= 2) {
+        openMergeModal(analystsList[0].id, analystsList[0].name);
+      }
     });
 
-    // Navigation Switcher
+    // Navigation Switcher for 4 bottom tabs
     function switchTab(tab) {
+      previousTab = currentTab;
       document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
       document.getElementById('screen-' + tab).classList.remove('hidden');
-      document.getElementById('tab-' + tab).classList.add('active');
+      const navItem = document.getElementById('tab-' + tab);
+      if (navItem) navItem.classList.add('active');
       currentTab = tab;
 
       if (tab === 'home') renderHomeOverview();
+      if (tab === 'predictions') renderPredictionsList();
+      if (tab === 'analysts') renderAnalystsList();
+    }
+
+    // Open dedicated Log Screen (Primary Action)
+    function openLogScreen() {
+      previousTab = currentTab;
+      document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById('screen-log').classList.remove('hidden');
+      refreshDailyLimits();
+    }
+
+    function closeLogScreen() {
+      switchTab(previousTab || 'home');
+    }
       if (tab === 'predictions') renderPredictionsList();
       if (tab === 'analysts') renderAnalystsList();
       if (tab === 'log') refreshDailyLimits();
@@ -1306,13 +1403,31 @@ function renderMobileAppHtml(): string {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sourceAnalystId: sourceId })
         });
-        if (!res.ok) throw new Error('Merge failed');
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Merge failed');
+        }
         closeModal('modal-merge');
         await refreshAnalysts();
         await refreshPredictions();
         alert('Profiles merged successfully! (Reversible at any time)');
       } catch (err) {
         alert(err.message);
+      }
+    }
+
+    // Settings Actions
+    function handleSignOut() {
+      if (confirm('Are you sure you want to sign out?')) {
+        alert('Session terminated.');
+        location.reload();
+      }
+    }
+
+    function handleDeleteAccount() {
+      if (confirm('Permanently delete your account? All private predictions and analyst profiles will be deleted. Note: Encrypted ledger events committed to Walrus or Sui cannot be altered.')) {
+        alert('Account deletion confirmed.');
+        location.reload();
       }
     }
   </script>

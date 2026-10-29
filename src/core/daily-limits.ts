@@ -50,22 +50,31 @@ export async function getDailyPredictionCount(userId: string, targetDate = new D
 
 /**
  * Evaluates current daily activity against the soft warning thresholds
+ *
+ * Rules:
+ * - Predictions 1–15: No warning (NORMAL).
+ * - Beginning with the 16th prediction: Display a gentle warning (WARNING).
+ * - At 25+ predictions: Continue allowing saves normally (ADVISORY).
+ * - No hard limits: canSave is always true.
+ * - Neutral helpful wording: "You've logged a lot of predictions today. Everything is still being saved normally."
  */
 export function evaluateDailyLimit(countToday: number): DailyLimitCheck {
+  const neutralMessage = "You've logged a lot of predictions today. Everything is still being saved normally.";
+
   if (countToday >= 25) {
     return {
       countToday,
       status: 'ADVISORY',
-      warningMessage: `High activity: you've logged ${countToday} predictions today. Remember to track quality over volume!`,
+      warningMessage: neutralMessage,
       canSave: true,
     };
   }
 
-  if (countToday >= 15) {
+  if (countToday >= 16) {
     return {
       countToday,
       status: 'WARNING',
-      warningMessage: `You've logged ${countToday} predictions today. Take a breather!`,
+      warningMessage: neutralMessage,
       canSave: true,
     };
   }

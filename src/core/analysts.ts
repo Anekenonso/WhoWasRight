@@ -122,6 +122,15 @@ export async function removeAnalystAlias(userId: string, aliasId: string): Promi
 
 /**
  * Reversibly merges sourceAnalyst into targetAnalyst
+ *
+ * Enforces strict safety rules:
+ * 1. An analyst cannot be merged into themselves (prevents self-cycles).
+ * 2. Cross-user isolation: Both source and target must belong to userId.
+ * 3. Cannot merge an analyst that is already merged (prevents merge chains).
+ * 4. Cannot merge into an analyst that is already merged (target must be an unmerged root).
+ * 5. Cannot create cycles (target cannot have been merged from source).
+ * 6. Supports arbitrary siblings merging into the same root (A + B + C).
+ * 7. Invariant: Every prediction retains original analyst_id and is counted exactly once.
  */
 export async function mergeAnalysts(
   userId: string,
@@ -134,29 +143,56 @@ export async function mergeAnalysts(
 
   return withTransaction(async (client) => {
     // 1. Verify both analysts belong to the user
-    const checkRes = await client.query<{ id: string; name: string }>(`
-      SELECT id, name FROM analysts
-      WHERE id IN ($1, $2) AND user_id = $3;
-    `, [sourceAnalystId, targetAnalystId, userId]);
+    const sourceRes = await client.query<{ id: string; name: string; merged_into_id: string | null }>(`
+      SELECT id, name, merged_into_id FROM analysts
+      WHERE id = $1 AND user_id = $2;
+    `, [sourceAnalystId, userId]);
 
-    if (checkRes.rows.length < 2) {
+    const targetRes = await client.query<{ id: string; name: string; merged_into_id: string | null }>(`
+      SELECT id, name, merged_into_id FROM analysts
+      WHERE id = $1 AND user_id = $2;
+    `, [targetAnalystId, userId]);
+
+    if (sourceRes.rows.length === 0 || targetRes.rows.length === 0) {
       throw new Error('One or both analysts not found or unauthorized');
     }
 
-    // 2. Set merged_into_id on source
+    const source = sourceRes.rows[0];
+    const target = targetRes.rows[0];
+
+    // 2. Prevent merging an already-merged analyst (prevents chains like B -> A, then B -> C)
+    if (source.merged_into_id) {
+      throw new Error('Cannot merge an analyst that is already merged into another profile');
+    }
+
+    // 3. Prevent merging into a target that is already merged (prevents chains like C -> B where B is merged into A)
+    if (target.merged_into_id) {
+      throw new Error('Cannot merge into an analyst that has been merged into another profile');
+    }
+
+    // 4. Prevent cycle attempts (e.g. if target was previously merged into source)
+    const cycleCheck = await client.query(`
+      SELECT id FROM analysts
+      WHERE merged_into_id = $1 AND id = $2 AND user_id = $3;
+    `, [sourceAnalystId, targetAnalystId, userId]);
+    if (cycleCheck.rows.length > 0) {
+      throw new Error('Cannot create a cyclic merge between these analysts');
+    }
+
+    // 5. Set merged_into_id on source
     await client.query(`
       UPDATE analysts
       SET merged_into_id = $1, updated_at = NOW()
       WHERE id = $2 AND user_id = $3;
     `, [targetAnalystId, sourceAnalystId, userId]);
 
-    // 3. Log audit row
+    // 6. Log audit row
     await client.query(`
       INSERT INTO analyst_merges (user_id, source_analyst_id, target_analyst_id)
       VALUES ($1, $2, $3);
     `, [userId, sourceAnalystId, targetAnalystId]);
 
-    // 4. Log Walrus Outbox Event
+    // 7. Log Walrus Outbox Event
     const memoryString = formatStructuredMemory({
       analystId: targetAnalystId,
       eventType: 'ANALYST_MERGED',

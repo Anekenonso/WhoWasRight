@@ -354,7 +354,7 @@ function renderMobileAppHtml(): string {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WhoWasRight — Private Sports Prediction Journal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -861,28 +861,28 @@ function renderMobileAppHtml(): string {
     <!-- Screen 5: Settings (Approved 4th Navigation Destination) -->
     <div id="screen-settings" class="screen hidden">
       <div class="card">
-        <div class="card-title">Telegram Authentication</div>
-        <div style="font-size: 13px; color: var(--slate); margin-bottom: 10px;">
-          Private session verified via official Telegram login.
+        <div class="card-title">Telegram Identity & Connection</div>
+        <div style="font-size: 13px; color: var(--slate); margin-bottom: 12px;">
+          Connected as <strong id="settings-username">@TelegramUser</strong>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border);">
           <span style="font-size: 13px; font-weight: 500;">Telegram Bot Status</span>
-          <span class="badge badge-good">Ready & Active</span>
+          <span class="badge badge-good" id="settings-bot-status">Connected</span>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border);">
           <span style="font-size: 13px; font-weight: 500;">Settlement Notifications</span>
-          <span class="badge badge-verified">Enabled</span>
+          <span class="badge badge-verified" id="settings-notifications-status">Enabled</span>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Decentralized Storage & Privacy</div>
+        <div class="card-title">Storage & Privacy</div>
         <div style="font-size: 12px; color: var(--slate); line-height: 1.6;">
-          <p style="margin-bottom: 8px;"><strong>Walrus Memory:</strong> Historical prediction and settlement events are synchronized to Walrus decentralized storage.</p>
-          <p style="margin-bottom: 8px;"><strong>Application Encryption:</strong> Event payloads are encrypted using AES-256-GCM before transmission.</p>
-          <p style="margin-bottom: 8px;"><strong>Tatum Sui Gateway:</strong> Sui Mainnet gRPC ledger reads verify onchain anchors independently.</p>
+          <p style="margin-bottom: 8px;"><strong>Walrus Memory:</strong> Historical prediction and settlement events are synchronized to decentralized Walrus storage for independent reconstruction.</p>
+          <p style="margin-bottom: 8px;"><strong>Application Encryption:</strong> Historical event records are encrypted application-side using AES-256-GCM with server-managed keys before transmission.</p>
+          <p style="margin-bottom: 8px;"><strong>Tatum Sui Gateway:</strong> Sui Mainnet gRPC account-object queries verify ledger connectivity.</p>
           <p style="font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px;">
-            Note: Due to the immutable nature of decentralized storage, encrypted events committed to Walrus or Sui cannot be deleted.
+            Note: Due to the immutable nature of decentralized storage, encrypted records committed to Walrus cannot be modified or deleted.
           </p>
         </div>
       </div>
@@ -894,7 +894,7 @@ function renderMobileAppHtml(): string {
             Sign Out
           </button>
           <button class="btn btn-outline" onclick="handleDeleteAccount()" style="color: var(--red); border-color: #FECACA; width: 100%;">
-            Delete Account Data
+            Delete Account
           </button>
         </div>
       </div>

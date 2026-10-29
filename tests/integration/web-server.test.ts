@@ -72,6 +72,8 @@ export async function runWebServerIntegrationTests(): Promise<{
     const ui = await request('/');
     assert(ui.status === 200, 'Root delivers Mobile HTML UI with 200');
     assert(ui.data.includes('viewport') && ui.data.includes('width=device-width'), 'HTML includes mobile responsive viewport');
+    assert(!ui.data.includes('user-scalable=no'), 'Accessibility: user-scalable=no is removed to allow user zoom');
+    assert(!ui.data.includes('maximum-scale'), 'Accessibility: maximum-scale restriction removed');
     assert(ui.data.includes('--blue: #2563EB') && ui.data.includes('--navy: #0F172A'), 'HTML uses approved light theme colors');
     assert(ui.data.includes('min-height: 44px') && ui.data.includes('min-width: 44px'), 'Buttons satisfy 44x44px touch targets');
     assert(ui.data.includes('Add Another Prediction') && ui.data.includes('Back to Home'), 'Post-save inline actions exist');
@@ -81,6 +83,9 @@ export async function runWebServerIntegrationTests(): Promise<{
     assert(ui.data.includes('id="tab-analysts"') && ui.data.includes('id="tab-settings"'), 'Approved bottom nav: Analysts & Settings');
     assert(ui.data.includes('id="screen-settings"'), 'Settings screen restored and accessible');
     assert(ui.data.includes('+ Log Pick'), 'Quick Log Pick action accessible from top bar');
+    assert(!ui.data.includes('Weekly scorecards'), 'Settings does not contain unapproved weekly scorecards');
+    assert(!ui.data.includes('Kickoff reminder'), 'Settings does not contain unapproved kickoff reminders');
+    assert(!ui.data.includes('Export Data') && !ui.data.includes('Data Export'), 'Settings does not contain unapproved data export');
 
     // Setup Test User
     const suffix = Date.now();
@@ -195,15 +200,15 @@ export async function runWebServerIntegrationTests(): Promise<{
   };
 }
 
-if (process.argv[1]?.endsWith('web-server.test.ts')) {
+if (process.argv[1]?.replace(/\\/g, '/').endsWith('web-server.test.ts')) {
   runWebServerIntegrationTests()
     .then(r => {
       console.log(`\nWeb Server Tests: ${r.count - r.failures.length}/${r.count} passed.`);
-      process.exitCode = r.passed ? 0 : 1;
+      process.exit(r.passed ? 0 : 1);
     })
     .catch(err => {
       console.error(err);
-      process.exitCode = 1;
+      process.exit(1);
     });
 }
 

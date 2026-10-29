@@ -47,8 +47,8 @@ export function computeCredibility(outcomes: RawOutcomeItem[], analystId?: strin
   let selfReportedCount = 0;
 
   for (const item of outcomes) {
-    const out = item.outcome.toUpperCase();
-    const ver = (item.verification || '').toUpperCase();
+    const out = (item.outcome || 'PENDING').toUpperCase();
+    const ver = (item.verification || 'UNVERIFIED').toUpperCase();
 
     if (out === 'PENDING') {
       pendingCount++;

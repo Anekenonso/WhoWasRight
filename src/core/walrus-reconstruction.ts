@@ -109,15 +109,15 @@ export function reconstructFromWalrusMemories(
       };
     } else if (ev.eventType === 'SETTLED') {
       if (predictions[p.predictionId]) {
-        predictions[p.predictionId].outcome = p.newOutcome;
-        predictions[p.predictionId].verification = p.verification;
+        predictions[p.predictionId].outcome = p.outcome || p.newOutcome || 'PENDING';
+        predictions[p.predictionId].verification = p.verification || 'UNVERIFIED';
         predictions[p.predictionId].settledAt = p.settledAt;
       }
     } else if (ev.eventType === 'CORRECTED') {
       if (predictions[p.predictionId]) {
-        predictions[p.predictionId].outcome = p.newOutcome;
-        predictions[p.predictionId].verification = p.verification;
-        predictions[p.predictionId].correctedAt = p.settledAt;
+        predictions[p.predictionId].outcome = p.outcome || p.newOutcome || 'PENDING';
+        predictions[p.predictionId].verification = p.verification || 'UNVERIFIED';
+        predictions[p.predictionId].correctedAt = p.settledAt || p.correctedAt;
       }
     }
   }

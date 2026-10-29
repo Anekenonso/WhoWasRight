@@ -18,7 +18,7 @@ export async function runMigrations(dbUrl?: string): Promise<{ success: boolean;
   const client = new Client({
     connectionString,
     ssl: { rejectUnauthorized: false },
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 30000,
   });
 
   await client.connect();

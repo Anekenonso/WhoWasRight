@@ -249,3 +249,44 @@ export async function settlePrediction(params: SettlePredictionParams): Promise<
   });
 }
 
+/**
+ * List predictions for a user with joined event and analyst metadata.
+ */
+export async function getPredictionsForUser(
+  userId: string,
+  filter: 'ALL' | 'PENDING' | 'SETTLED' | string = 'ALL'
+): Promise<any[]> {
+  let statusCondition = '';
+  if (filter === 'PENDING') {
+    statusCondition = "AND p.outcome = 'PENDING'";
+  } else if (filter === 'SETTLED') {
+    statusCondition = "AND p.outcome != 'PENDING'";
+  }
+
+  const res = await query(`
+    SELECT
+      p.id,
+      p.user_id,
+      p.event_id,
+      p.analyst_id,
+      COALESCE(a.name, 'Unknown Analyst') AS analyst_name,
+      COALESCE(e.sport, 'Other') AS sport,
+      e.label AS event_label,
+      e.start_at_utc,
+      p.market,
+      p.selection,
+      p.outcome,
+      p.verification,
+      p.created_at
+    FROM predictions p
+    JOIN events e ON e.id = p.event_id
+    LEFT JOIN analysts a ON a.id = p.analyst_id
+    WHERE p.user_id = $1
+      AND p.archived_at IS NULL
+      ${statusCondition}
+    ORDER BY p.created_at DESC
+  `, [userId]);
+
+  return res.rows;
+}
+

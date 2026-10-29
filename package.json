@@ -1,0 +1,20 @@
+{
+  "name": "whowasright",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:kill": "node --env-file-if-exists=.env scripts/kill-tests/run-kill-tests.ts",
+    "test:kill:k1": "node --env-file-if-exists=.env scripts/kill-tests/k1-walrus-mainnet.ts",
+    "test:kill:k2": "node --env-file-if-exists=.env scripts/kill-tests/k2-privacy-encryption.ts",
+    "test:kill:k3": "node --env-file-if-exists=.env scripts/kill-tests/k3-tatum-sui.ts",
+    "test:kill:k4": "node --env-file-if-exists=.env scripts/kill-tests/k4-football-provider.ts",
+    "test:kill:k5": "node --env-file-if-exists=.env scripts/kill-tests/k5-telegram-auth.ts"
+  },
+  "dependencies": {
+    "@mysten-incubation/memwal": "^0.1.11",
+    "@mysten/seal": "^1.5.2",
+    "@mysten/sui": "^2.38.0",
+    "pg": "^8.23.1"
+  }
+}

@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
+    "test": "node --env-file-if-exists=.env tests/run-all-tests.ts",
+    "test:unit:credibility": "node --env-file-if-exists=.env tests/unit/credibility.test.ts",
+    "test:unit:walrus": "node --env-file-if-exists=.env tests/unit/walrus-reconstruction.test.ts",
+    "test:unit:telegram": "node --env-file-if-exists=.env tests/unit/telegram-auth.test.ts",
+    "test:unit:football": "node --env-file-if-exists=.env tests/unit/football-cache.test.ts",
+    "test:integration:db": "node --env-file-if-exists=.env tests/integration/database-domain.test.ts",
     "test:kill": "node --env-file-if-exists=.env scripts/kill-tests/run-kill-tests.ts",
     "test:kill:k1": "node --env-file-if-exists=.env scripts/kill-tests/k1-walrus-mainnet.ts",
     "test:kill:k2": "node --env-file-if-exists=.env scripts/kill-tests/k2-privacy-encryption.ts",

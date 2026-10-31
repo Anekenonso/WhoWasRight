@@ -88,16 +88,22 @@ async function main() {
   let p5IntCount = 0;
 
   async function runWithTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (err: any) {
-      if (err?.code === 'ENOTFOUND' || err?.code === 'ECONNRESET' || err?.code === 'ETIMEDOUT') {
-        console.log('Transient network error encountered, retrying in 1.5s...');
-        await new Promise(r => setTimeout(r, 1500));
+    const maxRetries = 3;
+    let lastErr: any;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
         return await fn();
+      } catch (err: any) {
+        lastErr = err;
+        if (err?.code === 'ENOTFOUND' || err?.code === 'ECONNRESET' || err?.code === 'ETIMEDOUT') {
+          console.log(`Transient network error (${err.code}), retrying attempt ${attempt}/${maxRetries} in ${attempt * 1.5}s...`);
+          await new Promise(r => setTimeout(r, attempt * 1500));
+          continue;
+        }
+        throw err;
       }
-      throw err;
     }
+    throw lastErr;
   }
 
   // 9. Database Domain Integration Tests (Phase 1)

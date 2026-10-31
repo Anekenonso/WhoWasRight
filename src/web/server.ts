@@ -27,7 +27,13 @@ import {
 import { createEvent, createPrediction, getPredictionsForUser } from '../core/predictions.ts';
 import { checkUserDailyLimit, getDailyPredictionCount } from '../core/daily-limits.ts';
 import { parsePredictionPaste } from '../core/paste-parser.ts';
-import { getSessionUser } from '../core/auth.ts';
+import {
+  getSessionUser,
+  authenticateTelegramUser,
+  verifyTelegramLoginPayload,
+  revokeSession,
+} from '../core/auth.ts';
+import { createDemoSession, isDemoUser } from '../core/demo-mode.ts';
 import {
   generateBotLinkToken,
   confirmBotLink,
@@ -42,6 +48,16 @@ import {
 } from '../core/telegram-bot.ts';
 import { verifyCronSecret, runSettlementCycle } from '../core/football-settler.ts';
 import { settlePrediction } from '../core/predictions.ts';
+
+// Authentication error for fail-closed request rejection
+export class UnauthorizedError extends Error {
+  statusCode: number;
+  constructor(message = 'Authentication required') {
+    super(message);
+    this.name = 'UnauthorizedError';
+    this.statusCode = 401;
+  }
+}
 
 // Helper to parse JSON request body
 async function parseJsonBody<T = any>(req: http.IncomingMessage): Promise<T> {
@@ -71,43 +87,51 @@ function sendJson(res: http.ServerResponse, statusCode: number, data: any) {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Id',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Id, X-Dev-User-Id',
   });
   res.end(JSON.stringify(data));
 }
 
-// Helper to authenticate request
-async function getUserIdFromRequest(req: http.IncomingMessage): Promise<string> {
-  const customUserId = req.headers['x-user-id'] as string;
-  if (customUserId) {
-    return customUserId;
+// Helper to authenticate request - fails closed, never falls back to arbitrary/dev user
+export async function getUserIdFromRequest(req: http.IncomingMessage): Promise<string> {
+  // 1. Check Bearer token in Authorization header
+  const authHeader = req.headers['authorization'];
+  let token: string | null = null;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
   }
 
-  const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7);
+  // 2. Check session_token cookie (for browser SPA requests)
+  if (!token && req.headers.cookie) {
+    const cookies = req.headers.cookie.split(';');
+    for (const c of cookies) {
+      const trimmed = c.trim();
+      if (trimmed.startsWith('session_token=')) {
+        token = decodeURIComponent(trimmed.substring(14));
+        break;
+      }
+    }
+  }
+
+  // 3. Resolve session from database sessions table
+  if (token) {
     const user = await getSessionUser(token);
     if (user) {
       return user.id;
     }
   }
 
-  // Fallback: Default local dev user
-  const devUser = await query<{ id: string }>(`
-    SELECT id FROM users ORDER BY created_at ASC LIMIT 1
-  `);
-  if (devUser.rows.length > 0) {
-    return devUser.rows[0].id;
+  // 4. Development convenience: Strictly disallowed in production
+  // Only active when BOTH process.env.NODE_ENV !== 'production' AND process.env.ALLOW_DEV_AUTH === 'true'
+  if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_AUTH === 'true') {
+    const devUserId = req.headers['x-dev-user-id'] as string;
+    if (devUserId) {
+      return devUserId;
+    }
   }
 
-  // If no user exists, create a default user
-  const newUser = await query<{ id: string }>(`
-    INSERT INTO users (telegram_id, username, first_name)
-    VALUES (999999999, 'dev_user', 'Developer')
-    ON CONFLICT (telegram_id) DO UPDATE SET username = 'dev_user'
-    RETURNING id
-  `);
-  return newUser.rows[0].id;
+  // 5. Fail closed: Never return dev_user or first database user
+  throw new UnauthorizedError('Authentication required');
 }
 
 export function createWebServer(): http.Server {
@@ -131,6 +155,88 @@ export function createWebServer(): http.Server {
       // -------------------------------------------------------------
       // API ROUTES
       // -------------------------------------------------------------
+
+      // 0. Authentication Routes (Telegram Login, Judge Demo Mode, Session Status, Logout)
+      if (pathname === '/api/auth/telegram' && method === 'POST') {
+        const body = await parseJsonBody(req);
+        const verification = verifyTelegramLoginPayload(body);
+        if (!verification.valid || !verification.user) {
+          return sendJson(res, 401, { error: verification.reason || 'Invalid Telegram authentication payload' });
+        }
+        const session = await authenticateTelegramUser(verification.user);
+        res.setHeader('Set-Cookie', `session_token=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+        return sendJson(res, 200, {
+          success: true,
+          token: session.token,
+          user: session.user,
+          expiresAt: session.expiresAt.toISOString(),
+          isDemo: false,
+        });
+      }
+
+      if (pathname === '/api/auth/demo' && method === 'POST') {
+        const session = await createDemoSession();
+        res.setHeader('Set-Cookie', `session_token=${session.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+        return sendJson(res, 200, {
+          success: true,
+          token: session.token,
+          user: session.user,
+          expiresAt: session.expiresAt.toISOString(),
+          isDemo: true,
+        });
+      }
+
+      if (pathname === '/api/auth/me' && method === 'GET') {
+        let token: string | null = null;
+        const authHeader = req.headers['authorization'];
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          token = authHeader.substring(7).trim();
+        }
+        if (!token && req.headers.cookie) {
+          const cookies = req.headers.cookie.split(';');
+          for (const c of cookies) {
+            const trimmed = c.trim();
+            if (trimmed.startsWith('session_token=')) {
+              token = decodeURIComponent(trimmed.substring(14));
+              break;
+            }
+          }
+        }
+        if (token) {
+          const user = await getSessionUser(token);
+          if (user) {
+            return sendJson(res, 200, {
+              authenticated: true,
+              user,
+              isDemo: isDemoUser(user),
+            });
+          }
+        }
+        return sendJson(res, 401, { authenticated: false, error: 'Not authenticated' });
+      }
+
+      if (pathname === '/api/auth/logout' && method === 'POST') {
+        let token: string | null = null;
+        const authHeader = req.headers['authorization'];
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          token = authHeader.substring(7).trim();
+        }
+        if (!token && req.headers.cookie) {
+          const cookies = req.headers.cookie.split(';');
+          for (const c of cookies) {
+            const trimmed = c.trim();
+            if (trimmed.startsWith('session_token=')) {
+              token = decodeURIComponent(trimmed.substring(14));
+              break;
+            }
+          }
+        }
+        if (token) {
+          await revokeSession(token);
+        }
+        res.setHeader('Set-Cookie', 'session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+        return sendJson(res, 200, { success: true, message: 'Signed out successfully' });
+      }
 
       // 1. Health check
       if (pathname === '/api/health' && method === 'GET') {
@@ -461,6 +567,9 @@ export function createWebServer(): http.Server {
       // 404 for unknown endpoints
       sendJson(res, 404, { error: 'Not found' });
     } catch (err: any) {
+      if (err instanceof UnauthorizedError || err.name === 'UnauthorizedError' || err.statusCode === 401) {
+        return sendJson(res, 401, { error: err.message || 'Authentication required' });
+      }
       const msg = err.message || 'Internal Server Error';
       // Do not clutter logs for expected domain rejections (duplicates, kickoff locks)
       if (!msg.includes('Duplicate prediction') && !msg.includes('Kickoff locked')) {

@@ -12,8 +12,10 @@
  */
 
 import http from 'node:http';
+import { createHash, createHmac } from 'node:crypto';
 import { createWebServer } from '../../src/web/server.ts';
 import { query } from '../../src/core/db.ts';
+import { generateSessionToken, hashSessionToken } from '../../src/core/crypto.ts';
 
 export async function runWebServerIntegrationTests(): Promise<{
   passed: boolean;
@@ -93,7 +95,7 @@ export async function runWebServerIntegrationTests(): Promise<{
     assert(ui.data.includes('id="btn-activate-bot"'), 'Phase 5: Enable Result Reminders button exists in Settings');
     assert(ui.data.includes('id="btn-toggle-notifications"'), 'Phase 5: Settlement notification toggle exists in Settings');
 
-    // Setup Test User
+    // Setup Test User & Authenticated Session
     const suffix = Date.now();
     const uRes = await query<{ id: string }>(`
       INSERT INTO users (telegram_id, username, first_name)
@@ -101,7 +103,101 @@ export async function runWebServerIntegrationTests(): Promise<{
       RETURNING id
     `, [suffix + 100, `web_user_${suffix}`]);
     const userId = uRes.rows[0].id;
-    const userHeaders = { 'X-User-Id': userId };
+
+    const sessionToken = generateSessionToken();
+    const tokenHash = hashSessionToken(sessionToken);
+    await query(`
+      INSERT INTO sessions (token_hash, user_id, expires_at)
+      VALUES ($1, $2, NOW() + INTERVAL '1 day')
+    `, [tokenHash, userId]);
+    const userHeaders = { 'Authorization': `Bearer ${sessionToken}` };
+
+    // --- PRODUCTION AUTHENTICATION HARDENING TESTS ---
+    // Test 1: Unauthenticated request to protected endpoint fails closed with 401
+    const unauthRes = await request('/api/analysts');
+    assert(unauthRes.status === 401, 'Unauthenticated request to protected endpoint returns 401');
+    assert(unauthRes.data.error === 'Authentication required', 'Unauthenticated error message is Authentication required');
+
+    // Test 2: Expired session token is rejected with 401
+    const expiredToken = generateSessionToken();
+    const expHash = hashSessionToken(expiredToken);
+    await query(`
+      INSERT INTO sessions (token_hash, user_id, expires_at)
+      VALUES ($1, $2, NOW() - INTERVAL '1 hour')
+    `, [expHash, userId]);
+    const expiredRes = await request('/api/analysts', { headers: { 'Authorization': `Bearer ${expiredToken}` } });
+    assert(expiredRes.status === 401, 'Request with expired session token is rejected with 401');
+
+    // Test 3: Invalid arbitrary bearer token is rejected with 401
+    const invalidRes = await request('/api/analysts', { headers: { 'Authorization': 'Bearer non-existent-token-xyz' } });
+    assert(invalidRes.status === 401, 'Invalid bearer token is rejected with 401');
+
+    // Test 4: Client-supplied X-User-Id without valid session is rejected with 401 (cannot spoof identity)
+    const spoofRes = await request('/api/analysts', { headers: { 'X-User-Id': userId } });
+    assert(spoofRes.status === 401, 'Client cannot authenticate via spoofed X-User-Id header (fails closed with 401)');
+
+    // Test 5: Client-supplied X-Dev-User-Id in production or without ALLOW_DEV_AUTH is rejected with 401
+    const devHeaderRes = await request('/api/analysts', { headers: { 'X-Dev-User-Id': userId } });
+    assert(devHeaderRes.status === 401, 'Development authentication header is rejected when not explicitly enabled with 401');
+
+    // Test 6: Valid Telegram authentication endpoint (POST /api/auth/telegram)
+    const tgLoginData = {
+      id: suffix + 500,
+      first_name: 'Telegram Real User',
+      username: `tg_real_${suffix}`,
+      auth_date: Math.floor(Date.now() / 1000),
+    };
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const checkStr = Object.keys(tgLoginData).sort().map(k => `${k}=${(tgLoginData as any)[k]}`).join('\n');
+    const secretKey = createHash('sha256').update(botToken!).digest();
+    const validHash = createHmac('sha256', secretKey).update(checkStr).digest('hex');
+
+    const tgAuthRes = await request('/api/auth/telegram', {
+      method: 'POST',
+      body: { ...tgLoginData, hash: validHash }
+    });
+    assert(tgAuthRes.status === 200, 'Valid Telegram authentication returns 200');
+    assert(tgAuthRes.data.token !== undefined, 'Telegram auth issues valid session token');
+    assert(tgAuthRes.data.user.username === tgLoginData.username, 'Telegram auth resolves correct user identity');
+
+    // Test 7: GET /api/auth/me returns authenticated user
+    const meRes = await request('/api/auth/me', { headers: { 'Authorization': `Bearer ${tgAuthRes.data.token}` } });
+    assert(meRes.status === 200, 'GET /api/auth/me returns 200 for authenticated user');
+    assert(meRes.data.authenticated === true, 'GET /api/auth/me confirms authenticated === true');
+    assert(meRes.data.isDemo === false, 'Real Telegram user isDemo === false');
+
+    // Test 8: Judge Demo Mode creation (POST /api/auth/demo)
+    const demoRes = await request('/api/auth/demo', { method: 'POST' });
+    assert(demoRes.status === 200, 'Judge Demo endpoint returns 200');
+    assert(demoRes.data.isDemo === true, 'Judge Demo session is marked as isDemo === true');
+    assert(demoRes.data.token && demoRes.data.token.startsWith('demo_'), 'Judge Demo issues demo session token');
+
+    // Test 9: Judge Demo Mode data isolation - demo user cannot access or view real user records
+    const demoHeaders = { 'Authorization': `Bearer ${demoRes.data.token}` };
+    const demoAnalysts = await request('/api/analysts', { headers: demoHeaders });
+    assert(demoAnalysts.status === 200, 'Demo session lists demo analysts');
+    assert(demoAnalysts.data.analysts.length >= 2, 'Demo session has pre-seeded sample analysts');
+    assert(!demoAnalysts.data.analysts.some((a: any) => a.user_id === userId), 'Demo session cannot access real user analyst records');
+
+    // Test 10: User A session cannot access User B private analyst records (Cross-user ownership)
+    const uBRes = await query<{ id: string }>(`
+      INSERT INTO users (telegram_id, username, first_name)
+      VALUES ($1, $2, 'User B') RETURNING id;
+    `, [suffix + 900, `user_b_${suffix}`]);
+    const userBId = uBRes.rows[0].id;
+    const aBRes = await query<{ id: string }>(`
+      INSERT INTO analysts (user_id, name) VALUES ($1, 'Private Analyst B') RETURNING id;
+    `, [userBId]);
+    const analystBId = aBRes.rows[0].id;
+
+    const crossAccess = await request(`/api/analysts/${analystBId}`, { headers: userHeaders });
+    assert(crossAccess.status === 404, 'User A session cannot access User B private analyst (returns 404 Not Found)');
+
+    // Test 11: Sign out (POST /api/auth/logout) revokes session
+    const logoutRes = await request('/api/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${tgAuthRes.data.token}` } });
+    assert(logoutRes.status === 200, 'POST /api/auth/logout returns 200');
+    const meAfterLogout = await request('/api/auth/me', { headers: { 'Authorization': `Bearer ${tgAuthRes.data.token}` } });
+    assert(meAfterLogout.status === 401, 'Session revoked after sign out (GET /api/auth/me returns 401)');
 
     // Phase 5 Bot Status & Activation API
     const botStatus = await request('/api/bot/status', { headers: userHeaders });

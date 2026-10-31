@@ -247,7 +247,7 @@ export async function runGate3OutboxResilienceTests(): Promise<{
   // Verify it can now be confirmed
   await processMemoryOutbox({
     userId,
-    batchSize: 1,
+    batchSize: 5,
     walrusClientOverride: mockWalrusSuccess,
   });
   const check7Confirmed = await query(`SELECT status FROM memory_outbox WHERE id = $1;`, [outboxId6]);

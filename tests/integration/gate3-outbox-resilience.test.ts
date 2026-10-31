@@ -292,6 +292,7 @@ export async function runGate3OutboxResilienceTests(): Promise<{
   assert(duplicateConstraintThrown === true, 'Scenario 9: Database rejects duplicate receipt with code 23505 (unique constraint violation)');
 
   // --- Scenario 10: Explicit verification that PostgreSQL row locks are NOT held during external Walrus network calls ---
+  await query(`DELETE FROM memory_outbox WHERE user_id = $1;`, [userId]);
   const payload10 = makePayload(11, 'CREATED', { pick: 'Test10' });
   const outboxRes10 = await query<{ id: string }>(`
     INSERT INTO memory_outbox (user_id, event_key, payload, status, attempts, next_retry_at)

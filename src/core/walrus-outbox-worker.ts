@@ -182,7 +182,7 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
         });
 
       } catch (err: any) {
-        console.error(`[WALRUS ERROR item ${item.id}]:`, err?.message || err);
+        console.log(`[WALRUS RETRY item ${item.id}]:`, err?.message || err);
         const nextAttempts = item.attempts + 1;
         const errorMsg = err.message || 'Walrus write failure';
 

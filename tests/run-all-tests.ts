@@ -1,14 +1,17 @@
 /**
- * Phase 1, 2 & 3 Master Test Runner
+ * Phase 1, 2, 3, 4 & 5 Master Test Runner
  *
  * Runs all Unit Tests:
  * - Credibility, Walrus Reconstruction, Telegram Auth, Football Cache
  * - Rule-Based Paste Parser, Daily Limits, Football Settlement
+ * - Phase 5: Telegram Bot Security & Football Settler Logic
  * And Integration Tests:
  * - Database Domain Integration (Phase 1)
  * - Analyst Management, Predictions, Merges (Phase 2 Record Slice)
  * - Web Server & Mobile UI Integration (Phase 2)
  * - Walrus Outbox, Reversibility, Replay & Integrity (Phase 3 Remember Slice)
+ * - Gate 3 Outbox Resilience & Idempotency
+ * - Phase 5 Bot Linking, Settlement & Notifications
  */
 
 import { runCredibilityUnitTests } from './unit/credibility.test.ts';
@@ -23,6 +26,8 @@ import { runPhase2IntegrationTests } from './integration/phase2-record-slice.tes
 import { runWebServerIntegrationTests } from './integration/web-server.test.ts';
 import { runPhase3RememberSliceIntegrationTests } from './integration/phase3-remember-slice.test.ts';
 import { runGate3OutboxResilienceTests } from './integration/gate3-outbox-resilience.test.ts';
+import { runPhase5UnitTests } from './unit/phase5-telegram-settler.test.ts';
+import { runPhase5IntegrationTests } from './integration/phase5-settlement.test.ts';
 import { closeDbPool } from '../src/core/db.ts';
 
 async function main() {
@@ -70,15 +75,34 @@ async function main() {
   totalTests += settleRes.count;
   totalFailures.push(...settleRes.failures);
 
+  // 8. Phase 5 Telegram Bot & Football Settler Unit Tests
+  const p5UnitRes = runPhase5UnitTests();
+  totalTests += p5UnitRes.count;
+  totalFailures.push(...p5UnitRes.failures);
+
   let dbCount = 0;
   let p2Count = 0;
   let webCount = 0;
   let p3Count = 0;
   let gate3Count = 0;
+  let p5IntCount = 0;
 
-  // 8. Database Domain Integration Tests (Phase 1)
+  async function runWithTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (err?.code === 'ENOTFOUND' || err?.code === 'ECONNRESET' || err?.code === 'ETIMEDOUT') {
+        console.log('Transient network error encountered, retrying in 1.5s...');
+        await new Promise(r => setTimeout(r, 1500));
+        return await fn();
+      }
+      throw err;
+    }
+  }
+
+  // 9. Database Domain Integration Tests (Phase 1)
   try {
-    const dbRes = await runDatabaseDomainIntegrationTests();
+    const dbRes = await runWithTransientRetry(() => runDatabaseDomainIntegrationTests());
     dbCount = dbRes.count;
     totalTests += dbRes.count;
     totalFailures.push(...dbRes.failures);
@@ -87,9 +111,9 @@ async function main() {
     console.error('Fatal Database Integration Error:', err);
   }
 
-  // 9. Phase 2 Record Slice Integration Tests
+  // 10. Phase 2 Record Slice Integration Tests
   try {
-    const p2Res = await runPhase2IntegrationTests();
+    const p2Res = await runWithTransientRetry(() => runPhase2IntegrationTests());
     p2Count = p2Res.count;
     totalTests += p2Res.count;
     totalFailures.push(...p2Res.failures);
@@ -98,9 +122,9 @@ async function main() {
     console.error('Fatal Phase 2 Integration Error:', err);
   }
 
-  // 10. Web Server & Mobile UI Integration Tests
+  // 11. Web Server & Mobile UI Integration Tests
   try {
-    const webRes = await runWebServerIntegrationTests();
+    const webRes = await runWithTransientRetry(() => runWebServerIntegrationTests());
     webCount = webRes.count;
     totalTests += webRes.count;
     totalFailures.push(...webRes.failures);
@@ -109,9 +133,9 @@ async function main() {
     console.error('Fatal Web Server Integration Error:', err);
   }
 
-  // 11. Phase 3 Remember Slice Integration Tests
+  // 12. Phase 3 Remember Slice Integration Tests
   try {
-    const p3Res = await runPhase3RememberSliceIntegrationTests();
+    const p3Res = await runWithTransientRetry(() => runPhase3RememberSliceIntegrationTests());
     p3Count = p3Res.count;
     totalTests += p3Res.count;
     totalFailures.push(...p3Res.failures);
@@ -120,15 +144,26 @@ async function main() {
     console.error('Fatal Phase 3 Integration Error:', err);
   }
 
-  // 12. Gate 3 Outbox Resilience & Idempotency Tests
+  // 13. Gate 3 Outbox Resilience & Idempotency Tests
   try {
-    const g3Res = await runGate3OutboxResilienceTests();
+    const g3Res = await runWithTransientRetry(() => runGate3OutboxResilienceTests());
     gate3Count = g3Res.count;
     totalTests += g3Res.count;
     totalFailures.push(...g3Res.failures);
   } catch (err: unknown) {
     totalFailures.push(`Gate 3 Outbox Resilience integration exception: ${(err as Error).message}`);
     console.error('Fatal Gate 3 Outbox Resilience Integration Error:', err);
+  }
+
+  // 14. Phase 5 Bot Linking, Settlement & Notifications Integration Tests
+  try {
+    const p5IntRes = await runPhase5IntegrationTests();
+    p5IntCount = p5IntRes.count;
+    totalTests += p5IntRes.count;
+    totalFailures.push(...p5IntRes.failures);
+  } catch (err: unknown) {
+    totalFailures.push(`Phase 5 integration exception: ${(err as Error).message}`);
+    console.error('Fatal Phase 5 Integration Error:', err);
   } finally {
     await closeDbPool();
   }
@@ -145,11 +180,13 @@ async function main() {
   console.log(`5. Paste Parser Unit Tests:                  ${pasteRes.count} tests`);
   console.log(`6. Daily Limits Unit Tests:                  ${dailyRes.count} tests`);
   console.log(`7. Football Settlement Unit Tests:           ${settleRes.count} tests`);
-  console.log(`8. Database Domain Integration Tests:        ${dbCount} tests`);
-  console.log(`9. Phase 2 Record Slice Integration Tests:   ${p2Count} tests`);
-  console.log(`10. Web Server & UI Integration Tests:       ${webCount} tests`);
-  console.log(`11. Phase 3 Remember Slice Tests:            ${p3Count} tests`);
-  console.log(`12. Gate 3 Outbox Resilience Tests:          ${gate3Count} tests`);
+  console.log(`8. Phase 5 Unit Tests (Bot & Settler):       ${p5UnitRes.count} tests`);
+  console.log(`9. Database Domain Integration Tests:        ${dbCount} tests`);
+  console.log(`10. Phase 2 Record Slice Integration Tests:  ${p2Count} tests`);
+  console.log(`11. Web Server & UI Integration Tests:       ${webCount} tests`);
+  console.log(`12. Phase 3 Remember Slice Tests:            ${p3Count} tests`);
+  console.log(`13. Gate 3 Outbox Resilience Tests:          ${gate3Count} tests`);
+  console.log(`14. Phase 5 Integration Tests (Settlement):  ${p5IntCount} tests`);
   console.log('------------------------------------------------------------');
   console.log(`Total Invariants & Assertions Tested: ${totalTests}`);
   console.log(`Total Passed:                         ${passedCount}`);
@@ -161,7 +198,7 @@ async function main() {
     console.log('\nVERDICT: FAIL');
     process.exit(1);
   } else {
-    console.log('\nVERDICT: ALL PHASE 1, 2, 3 & 4 INVARIANTS & INTEGRATION TESTS PASSED!');
+    console.log('\nVERDICT: ALL PHASE 1, 2, 3, 4 & 5 INVARIANTS & INTEGRATION TESTS PASSED!');
     process.exit(0);
   }
 }

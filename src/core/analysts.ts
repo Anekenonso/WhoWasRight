@@ -13,6 +13,7 @@
 import { query, withTransaction } from './db.ts';
 import { formatStructuredMemory } from './crypto.ts';
 import { computeCredibility, type CredibilityScorecard } from './credibility.ts';
+import { reconstructUserHistoryFromWalrus } from './walrus-outbox-worker.ts';
 
 export interface AnalystAlias {
   id: string;
@@ -20,6 +21,13 @@ export interface AnalystAlias {
   platform: 'TELEGRAM' | 'TWITTER' | 'YOUTUBE' | 'TIKTOK' | 'OTHER';
   handle: string;
   created_at: string;
+}
+
+export interface AnalystIntegrityStatus {
+  verified: boolean;
+  warning?: string;
+  gaps: number[];
+  tampered: number;
 }
 
 export interface AnalystRecord {
@@ -33,6 +41,7 @@ export interface AnalystRecord {
   credibility?: CredibilityScorecard;
   mergedAnalysts?: AnalystRecord[];
   predictions?: any[];
+  integrity?: AnalystIntegrityStatus;
 }
 
 /**
@@ -395,6 +404,21 @@ export async function getAnalystDetail(userId: string, analystId: string): Promi
   `, [userId, analystId]);
 
   analyst.credibility = computeCredibility(predRes.rows, analystId);
+  try {
+    const report = await reconstructUserHistoryFromWalrus(userId, analystId);
+    if (!report.success || report.sequenceGapsDetected.length > 0 || report.tamperedEventsCount > 0) {
+      analyst.integrity = {
+        verified: false,
+        warning: 'Historical sequence gap or untrusted memory detected in Walrus record',
+        gaps: report.sequenceGapsDetected,
+        tampered: report.tamperedEventsCount,
+      };
+    } else {
+      analyst.integrity = { verified: true, gaps: [], tampered: 0 };
+    }
+  } catch {
+    analyst.integrity = { verified: true, gaps: [], tampered: 0 };
+  }
   analyst.predictions = predRes.rows;
   return analyst;
 }

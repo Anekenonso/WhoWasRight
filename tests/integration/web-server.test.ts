@@ -90,6 +90,8 @@ export async function runWebServerIntegrationTests(): Promise<{
     assert(ui.data.includes('id="analyst-credibility-preview"'), 'Phase 4: Inline credibility preview exists in logging form');
     assert(ui.data.includes('id="detail-rating-tier-badge"') && ui.data.includes('id="detail-win-rate"'), 'Phase 4: Credibility scorecard card exists in HTML');
     assert(ui.data.includes('id="detail-walrus-status"'), 'Phase 4: Decentralized Walrus sync status indicator exists');
+    assert(ui.data.includes('id="btn-activate-bot"'), 'Phase 5: Enable Result Reminders button exists in Settings');
+    assert(ui.data.includes('id="btn-toggle-notifications"'), 'Phase 5: Settlement notification toggle exists in Settings');
 
     // Setup Test User
     const suffix = Date.now();
@@ -100,6 +102,23 @@ export async function runWebServerIntegrationTests(): Promise<{
     `, [suffix + 100, `web_user_${suffix}`]);
     const userId = uRes.rows[0].id;
     const userHeaders = { 'X-User-Id': userId };
+
+    // Phase 5 Bot Status & Activation API
+    const botStatus = await request('/api/bot/status', { headers: userHeaders });
+    assert(botStatus.status === 200, 'Phase 5: Bot status endpoint returns 200');
+    assert(botStatus.data.linked === false, 'Phase 5: Fresh user bot is not linked');
+
+    const botActivate = await request('/api/bot/activate', { method: 'POST', headers: userHeaders });
+    assert(botActivate.status === 200, 'Phase 5: Bot activate endpoint returns 200');
+    assert(botActivate.data.deepLink.includes('WhoWasRightBot'), 'Phase 5: Returns Telegram bot deep link');
+
+    // Phase 5 Webhook Unauthenticated Denial
+    const webhookNoAuth = await request('/api/telegram/webhook', { method: 'POST', body: { update_id: 1 } });
+    assert(webhookNoAuth.status === 401, 'Phase 5: Webhook missing secret returns 401');
+
+    // Phase 5 Cron Unauthenticated Denial
+    const cronNoAuth = await request('/api/cron/settle', { method: 'POST' });
+    assert(cronNoAuth.status === 401, 'Phase 5: Cron missing secret returns 401');
 
     // 3. Daily Limit API
     const limit = await request('/api/daily-limit', { headers: userHeaders });

@@ -28,6 +28,19 @@ import { createEvent, createPrediction, getPredictionsForUser } from '../core/pr
 import { checkUserDailyLimit, getDailyPredictionCount } from '../core/daily-limits.ts';
 import { parsePredictionPaste } from '../core/paste-parser.ts';
 import { getSessionUser } from '../core/auth.ts';
+import {
+  generateBotLinkToken,
+  confirmBotLink,
+  getBotLinkStatus,
+  toggleNotifications,
+  verifyWebhookSecret,
+  verifyCallbackNonce,
+  answerCallbackQuery,
+  sendMessage as sendTelegramMessage,
+  processNotificationQueue,
+} from '../core/telegram-bot.ts';
+import { verifyCronSecret, runSettlementCycle } from '../core/football-settler.ts';
+import { settlePrediction } from '../core/predictions.ts';
 
 // Helper to parse JSON request body
 async function parseJsonBody<T = any>(req: http.IncomingMessage): Promise<T> {
@@ -325,7 +338,154 @@ export function createWebServer(): http.Server {
       }
 
       // -------------------------------------------------------------
+      // PHASE 5: BOT LINKING, WEBHOOK, SETTLEMENT & NOTIFICATIONS
+      // -------------------------------------------------------------
+
+      // Bot: Generate linking token
+      if (pathname === '/api/bot/activate' && method === 'POST') {
+        const userId = await getUserIdFromRequest(req);
+        const { plaintextToken, deepLink } = await generateBotLinkToken(userId);
+        return sendJson(res, 200, { deepLink, token: plaintextToken });
+      }
+
+      // Bot: Get link status
+      if (pathname === '/api/bot/status' && method === 'GET') {
+        const userId = await getUserIdFromRequest(req);
+        const status = await getBotLinkStatus(userId);
+        return sendJson(res, 200, status);
+      }
+
+      // Bot: Toggle notifications
+      if (pathname === '/api/bot/toggle-notifications' && method === 'POST') {
+        const userId = await getUserIdFromRequest(req);
+        const body = await parseJsonBody(req);
+        const updated = await toggleNotifications(userId, !!body.enabled);
+        return sendJson(res, 200, { success: updated });
+      }
+
+      // Telegram Webhook
+      if (pathname === '/api/telegram/webhook' && method === 'POST') {
+        const secretHeader = req.headers['x-telegram-bot-api-secret-token'];
+        if (!verifyWebhookSecret(secretHeader)) {
+          return sendJson(res, 401, { error: 'Unauthorized' });
+        }
+        const update = await parseJsonBody(req);
+
+        // Bot activation via deep link
+        if (update && update.message && update.message.text && update.message.text.startsWith('/start link_')) {
+          const token = update.message.text.replace('/start link_', '').trim();
+          const chatId = update.message.chat.id;
+          const result = await confirmBotLink({ plaintextToken: token, telegramChatId: chatId });
+          if (result.success) {
+            await sendTelegramMessage(chatId, 'WhoWasRight connected! You will receive result notifications here.');
+          } else {
+            await sendTelegramMessage(chatId, 'Could not link account: ' + result.reason);
+          }
+          return sendJson(res, 200, { ok: true });
+        }
+
+        // Inline button callbacks (manual settlement)
+        if (update && update.callback_query) {
+          const cbq = update.callback_query;
+          const callbackData = cbq.data || '';
+          const fromChatId = cbq.from.id;
+          const callbackQueryId = cbq.id;
+
+          if (callbackData.startsWith('settle:')) {
+            const parsed = verifyCallbackNonce(callbackData, fromChatId);
+            if (!parsed) {
+              await answerCallbackQuery(callbackQueryId, 'This button has expired. Please request a new settlement prompt.');
+              return sendJson(res, 200, { ok: true });
+            }
+            const predictionId = parsed.predictionId;
+            const outcome = parsed.outcome;
+            const ownerRes = await query(
+              'SELECT p.user_id FROM predictions p JOIN bot_links bl ON bl.user_id = p.user_id WHERE p.id = $1 AND bl.telegram_chat_id = $2;',
+              [predictionId, fromChatId]
+            );
+            if (ownerRes.rows.length === 0) {
+              await answerCallbackQuery(callbackQueryId, 'Unauthorized');
+              return sendJson(res, 200, { ok: true });
+            }
+            const userId = ownerRes.rows[0].user_id;
+            const allowedOutcomes = ['WON', 'LOST', 'PUSH'];
+            if (!allowedOutcomes.includes(outcome)) {
+              await answerCallbackQuery(callbackQueryId, 'Invalid outcome');
+              return sendJson(res, 200, { ok: true });
+            }
+            try {
+              await settlePrediction({
+                userId,
+                predictionId,
+                newOutcome: outcome,
+                source: 'MANUAL_USER',
+                verification: 'SELF_REPORTED',
+                evidenceJson: { source: 'telegram_callback', chatId: fromChatId },
+              });
+              await answerCallbackQuery(callbackQueryId, 'Recorded as ' + outcome + ' - self-reported');
+            } catch (settleErr) {
+              const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+              if (msg.includes('already settled')) {
+                await answerCallbackQuery(callbackQueryId, 'Already settled.');
+              } else {
+                await answerCallbackQuery(callbackQueryId, 'Could not record result. Please use the app.');
+              }
+            }
+          }
+          return sendJson(res, 200, { ok: true });
+        }
+        return sendJson(res, 200, { ok: true });
+      }
+
+      // Cron: Football settlement + notification dispatch
+      if (pathname === '/api/cron/settle' && method === 'POST') {
+        if (!verifyCronSecret(req.headers['authorization'])) {
+          return sendJson(res, 401, { error: 'Unauthorized' });
+        }
+        const settlementResult = await runSettlementCycle();
+        const notifResult = await processNotificationQueue();
+        return sendJson(res, 200, { settlement: settlementResult, notifications: notifResult });
+      }
+
+      // Manual settlement: settle a prediction from the app
+      const manualSettleMatch = pathname.match(/^\/api\/predictions\/([0-9a-fA-F-]+)\/settle$/);
+      if (manualSettleMatch && method === 'POST') {
+        const predictionId = manualSettleMatch[1];
+        const userId = await getUserIdFromRequest(req);
+        const body = await parseJsonBody(req);
+        const allowed = ['WON', 'LOST', 'PUSH'];
+        if (!allowed.includes(body.outcome)) {
+          return sendJson(res, 400, { error: 'outcome must be WON, LOST, or PUSH' });
+        }
+        const result = await settlePrediction({
+          userId,
+          predictionId,
+          newOutcome: body.outcome,
+          source: 'MANUAL_USER',
+          verification: 'SELF_REPORTED',
+          evidenceJson: { source: 'web_manual_settle' },
+        });
+        return sendJson(res, 200, { success: true, ...result });
+      }
+
+      // Prediction detail (private, ownership-enforced)
+      const predDetailMatch = pathname.match(/^\/api\/predictions\/([0-9a-fA-F-]+)$/);
+      if (predDetailMatch && method === 'GET') {
+        const predictionId = predDetailMatch[1];
+        const userId = await getUserIdFromRequest(req);
+        const predRes = await query(
+          'SELECT p.*, e.label as event_label, e.sport, e.start_at_utc, e.api_fixture_id, a.name as analyst_name FROM predictions p JOIN events e ON e.id = p.event_id JOIN analysts a ON a.id = p.analyst_id WHERE p.id = $1 AND p.user_id = $2;',
+          [predictionId, userId]
+        );
+        if (predRes.rows.length === 0) {
+          return sendJson(res, 404, { error: 'Prediction not found' });
+        }
+        return sendJson(res, 200, { prediction: predRes.rows[0] });
+      }
+
+      // -------------------------------------------------------------
       // UI / HTML CLIENT (Mobile-First Single-Page Application)
+      // -------------------------------------------------------------
       // -------------------------------------------------------------
       if (pathname === '/' || pathname === '/index.html' || pathname === '/log' || pathname === '/analysts' || pathname === '/predictions') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -957,9 +1117,13 @@ function renderMobileAppHtml(): string {
           <span style="font-size: 13px; font-weight: 500;">Telegram Bot Status</span>
           <span class="badge badge-good" id="settings-bot-status">Connected</span>
         </div>
+        <div id="settings-bot-activation-prompt" style="padding: 10px 0; border-top: 1px solid var(--border); display: none;">
+          <p style="font-size: 12px; color: var(--slate); margin-bottom: 8px;">Enable Result Reminders to receive verified result alerts and manual score settlement prompts via @WhoWasRightBot.</p>
+          <button id="btn-activate-bot" class="btn btn-primary btn-sm" onclick="handleActivateBot()">Enable Result Reminders</button>
+        </div>
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border);">
           <span style="font-size: 13px; font-weight: 500;">Settlement Notifications</span>
-          <span class="badge badge-verified" id="settings-notifications-status">Enabled</span>
+          <div style="display: flex; align-items: center; gap: 8px;"><span class="badge badge-verified" id="settings-notifications-status">Enabled</span><button id="btn-toggle-notifications" class="btn btn-outline btn-sm" onclick="handleToggleNotifications()">Toggle</button></div>
         </div>
       </div>
 
@@ -1620,6 +1784,67 @@ function renderMobileAppHtml(): string {
     function handleSignOut() {
       alert('Signed out successfully.');
       window.location.reload();
+    }
+
+    async function refreshBotStatus() {
+      try {
+        const res = await fetch('/api/bot/status');
+        if (res.ok) {
+          const status = await res.json();
+          const badge = document.getElementById('settings-bot-status');
+          const prompt = document.getElementById('settings-bot-activation-prompt');
+          const notifStatus = document.getElementById('settings-notifications-status');
+          if (status.linked) {
+            badge.textContent = 'Connected';
+            badge.className = 'badge badge-good';
+            if (prompt) prompt.style.display = 'none';
+          } else {
+            badge.textContent = 'Not Connected';
+            badge.className = 'badge badge-not-rated';
+            if (prompt) prompt.style.display = 'block';
+          }
+          if (notifStatus) {
+            notifStatus.textContent = status.enabled ? 'Enabled' : 'Disabled';
+            notifStatus.className = 'badge ' + (status.enabled ? 'badge-verified' : 'badge-not-rated');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to refresh bot status', err);
+      }
+    }
+
+    async function handleActivateBot() {
+      try {
+        const res = await fetch('/api/bot/activate', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.deepLink) {
+            window.open(data.deepLink, '_blank');
+          }
+        } else {
+          alert('Could not generate bot activation link');
+        }
+      } catch (err) {
+        alert('Network error activating bot');
+      }
+    }
+
+    async function handleToggleNotifications() {
+      try {
+        const statusRes = await fetch('/api/bot/status');
+        const status = await statusRes.json();
+        const newSetting = !status.enabled;
+        const res = await fetch('/api/bot/toggle-notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: newSetting })
+        });
+        if (res.ok) {
+          await refreshBotStatus();
+        }
+      } catch (err) {
+        alert('Failed to toggle notifications');
+      }
     }
 
     function handleDeleteAccount() {

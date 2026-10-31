@@ -81,13 +81,89 @@ async function parseJsonBody<T = any>(req: http.IncomingMessage): Promise<T> {
   });
 }
 
-// Helper to send JSON responses
-function sendJson(res: http.ServerResponse, statusCode: number, data: any) {
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+/**
+ * Resolves allowed CORS origins from configuration and environment.
+ * Supports exact production frontend origin and optional preview pattern.
+ */
+export function getAllowedOrigins(): { exact: Set<string>; patterns: RegExp[] } {
+  const exact = new Set<string>();
+  const patterns: RegExp[] = [];
+
+  const envOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.CORS_ORIGIN,
+    process.env.ALLOWED_ORIGINS,
+  ].filter(Boolean) as string[];
+
+  for (const envVal of envOrigins) {
+    for (const part of envVal.split(',')) {
+      const trimmed = part.trim();
+      if (trimmed) exact.add(trimmed);
+    }
+  }
+
+  if (process.env.ALLOWED_PREVIEW_PATTERN) {
+    try {
+      patterns.push(new RegExp(process.env.ALLOWED_PREVIEW_PATTERN));
+    } catch (e) {
+      console.warn('Invalid ALLOWED_PREVIEW_PATTERN regex:', process.env.ALLOWED_PREVIEW_PATTERN);
+    }
+  }
+
+  // Development convenience: Allow localhost / 127.0.0.1
+  if (process.env.NODE_ENV !== 'production') {
+    exact.add('http://localhost:3000');
+    exact.add('http://localhost:5173');
+    exact.add('http://127.0.0.1:3000');
+    exact.add('http://127.0.0.1:5173');
+    patterns.push(/^http:\/\/localhost(:\d+)?$/);
+    patterns.push(/^http:\/\/127\.0\.0\.1(:\d+)?$/);
+  }
+
+  return { exact, patterns };
+}
+
+/**
+ * Validates whether an incoming HTTP Origin is authorized under the CORS policy.
+ */
+export function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return false;
+  const { exact, patterns } = getAllowedOrigins();
+  if (exact.has(origin)) return true;
+  for (const pattern of patterns) {
+    if (pattern.test(origin)) return true;
+  }
+  return false;
+}
+
+/**
+ * Generates CORS headers tailored to the incoming request.
+ * - Allowed origins receive explicit Access-Control-Allow-Origin + Vary: Origin.
+ * - Unapproved origins omit Access-Control-Allow-Origin to fail closed in browsers.
+ * - Credentials are not enabled for the bearer-token architecture.
+ */
+export function getCorsHeaders(req: http.IncomingMessage): Record<string, string> {
+  const origin = req.headers['origin'];
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Id, X-Dev-User-Id',
+  };
+
+  if (origin && isOriginAllowed(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers['Vary'] = 'Origin';
+  }
+
+  return headers;
+}
+
+// Helper to send JSON responses with request-aware CORS headers
+function sendJson(res: http.ServerResponse, statusCode: number, data: any, req?: http.IncomingMessage) {
+  const effectiveReq = req || (res as any).__req;
+  const corsHeaders = effectiveReq ? getCorsHeaders(effectiveReq) : {};
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json',
+    ...corsHeaders,
   });
   res.end(JSON.stringify(data));
 }
@@ -136,17 +212,15 @@ export async function getUserIdFromRequest(req: http.IncomingMessage): Promise<s
 
 export function createWebServer(): http.Server {
   return http.createServer(async (req, res) => {
+    (res as any).__req = req;
     const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
     const pathname = parsedUrl.pathname;
     const method = req.method?.toUpperCase();
 
     // CORS preflight
     if (method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Id',
-      });
+      const cors = getCorsHeaders(req);
+      res.writeHead(204, cors);
       res.end();
       return;
     }
@@ -889,6 +963,51 @@ function renderMobileAppHtml(): string {
 </head>
 <body>
 
+  <!-- Screen 0: Authentication / Login Screen (Shown when unauthenticated) -->
+  <div id="screen-auth" class="container">
+    <div class="card" style="text-align: center; padding: 24px 16px; margin-top: 16px;">
+      <div style="font-size: 36px; margin-bottom: 8px;">⚽ ⚖️</div>
+      <h1 style="font-size: 20px; font-weight: 700; color: var(--navy); margin-bottom: 6px;">WhoWasRight</h1>
+      <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5;">
+        Private sports prediction journal with cryptographically immutable credibility tracking.
+      </p>
+
+      <div id="auth-error-banner" class="banner banner-error hidden" style="text-align: left; margin-bottom: 16px;">
+        <span id="auth-error-text">Authentication required</span>
+      </div>
+
+      <!-- Judge & Evaluator Demo Mode (Instant Sandbox) -->
+      <div style="background: var(--blue-light); border: 1px solid #BFDBFE; border-radius: var(--radius); padding: 16px; margin-bottom: 20px; text-align: left;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="font-weight: 700; font-size: 14px; color: var(--blue);">⚡ Judge & Evaluator Demo</span>
+          <span class="badge badge-good">60-Min Sandbox</span>
+        </div>
+        <p style="font-size: 12px; color: var(--slate); margin-bottom: 14px; line-height: 1.5;">
+          Instant isolated session pre-populated with predictions, credibility ratings, and manual settlement verification. No Telegram required.
+        </p>
+        <button id="btn-demo-login" class="btn btn-primary" onclick="handleDemoLogin()">
+          Enter Judge Demo Mode
+        </button>
+      </div>
+
+      <!-- Telegram Login Widget Section -->
+      <div style="border-top: 1px solid var(--border); padding-top: 18px;">
+        <div style="font-size: 13px; font-weight: 600; color: var(--slate); margin-bottom: 4px;">
+          Sign In with Telegram
+        </div>
+        <p style="font-size: 11px; color: var(--muted); margin-bottom: 14px;">
+          Receive verified result alerts and settlement reminders via @WhoWasRightBot.
+        </p>
+        <div id="telegram-login-container" style="display: flex; justify-content: center; min-height: 44px; align-items: center;">
+          <div style="font-size: 12px; color: var(--muted); background: var(--bg); padding: 10px 14px; border-radius: 8px; width: 100%;">
+            Telegram Login Widget active in production deployment
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-content" class="hidden">
   <!-- Top App Bar -->
   <div class="top-bar">
     <div class="logo">
@@ -1296,8 +1415,14 @@ function renderMobileAppHtml(): string {
       <span>Settings</span>
     </div>
   </nav>
+  </div>
 
   <script>
+    // Session & Auth state
+    const TOKEN_STORAGE_KEY = 'wwr_session_token';
+    let currentAuthToken = null;
+    let currentUser = null;
+
     // State
     let currentTab = 'home';
     let previousTab = 'home';
@@ -1306,8 +1431,130 @@ function renderMobileAppHtml(): string {
     let currentPredictionFilter = 'ALL';
     let parsedCandidateData = null;
 
-    // Initialization
-    window.addEventListener('DOMContentLoaded', async () => {
+    // Centralized authenticated API Fetch wrapper (sends Bearer token, fails closed on 401)
+    async function apiFetch(url, options) {
+      options = options || {};
+      const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+      const headers = Object.assign({}, options.headers || {});
+      if (token) {
+        headers['Authorization'] = 'Bearer ' + token;
+      }
+      options.headers = headers;
+      const res = await fetch(url, options);
+      if (res.status === 401) {
+        // Expired or invalid token: clear local storage and return to login screen
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+        currentAuthToken = null;
+        currentUser = null;
+        showAuthScreen('Your session has expired. Please sign in again.');
+        throw new Error('Unauthorized');
+      }
+      return res;
+    }
+
+    function showAuthScreen(msg) {
+      document.getElementById('screen-auth').classList.remove('hidden');
+      document.getElementById('app-content').classList.add('hidden');
+      const banner = document.getElementById('auth-error-banner');
+      const text = document.getElementById('auth-error-text');
+      if (msg && banner && text) {
+        text.textContent = msg;
+        banner.classList.remove('hidden');
+      } else if (banner) {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function showAppScreen() {
+      document.getElementById('screen-auth').classList.add('hidden');
+      document.getElementById('app-content').classList.remove('hidden');
+      if (currentUser) {
+        const usernameEl = document.getElementById('settings-username');
+        if (usernameEl) {
+          usernameEl.textContent = currentUser.username ? '@' + currentUser.username : 'User ' + currentUser.id.slice(0, 8);
+        }
+        const badgeEl = document.getElementById('topbar-user-badge');
+        if (badgeEl) {
+          badgeEl.textContent = Number(currentUser.telegram_id) < 0 ? 'Judge Demo' : 'Journal';
+        }
+      }
+    }
+
+    async function handleDemoLogin() {
+      const btn = document.getElementById('btn-demo-login');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/demo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (!res.ok || !data.token) {
+          throw new Error(data.error || 'Failed to start demo session');
+        }
+        sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+        currentAuthToken = data.token;
+        currentUser = data.user;
+        showAppScreen();
+        await initializeAppViews();
+      } catch (err) {
+        showAuthScreen(err.message || 'Demo login failed');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function handleTelegramAuth(user) {
+      try {
+        const res = await fetch('/api/auth/telegram', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(user),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.token) {
+          throw new Error(data.error || 'Telegram authentication failed');
+        }
+        sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+        currentAuthToken = data.token;
+        currentUser = data.user;
+        showAppScreen();
+        await initializeAppViews();
+      } catch (err) {
+        showAuthScreen(err.message || 'Telegram authentication failed');
+      }
+    }
+    window.onTelegramAuth = handleTelegramAuth;
+
+    async function handleSignOut() {
+      try {
+        await apiFetch('/api/auth/logout', { method: 'POST' });
+      } catch (e) {
+        // Proceed to clear local state
+      } finally {
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+        currentAuthToken = null;
+        currentUser = null;
+        showAuthScreen('You have been signed out.');
+      }
+    }
+
+    async function handleDeleteAccount() {
+      if (confirm('Are you sure you want to delete your account? All private journal entries will be deleted.')) {
+        try {
+          await apiFetch('/api/account/delete', { method: 'POST' });
+        } catch (e) {
+          // Proceed to clear local state
+        } finally {
+          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+          currentAuthToken = null;
+          currentUser = null;
+          showAuthScreen('Your account and private data have been deleted.');
+        }
+      }
+    }
+
+    async function initializeAppViews() {
       // Set default kickoff time to 2 hours from now UTC
       const defaultKickoff = new Date(Date.now() + 2 * 3600 * 1000);
       const kickoffInput = document.getElementById('form-kickoff');
@@ -1316,7 +1563,8 @@ function renderMobileAppHtml(): string {
       await Promise.all([
         refreshDailyLimits(),
         refreshAnalysts(),
-        refreshPredictions()
+        refreshPredictions(),
+        refreshBotStatus()
       ]);
 
       // URL parameters for direct view routing & UI verification
@@ -1341,6 +1589,32 @@ function renderMobileAppHtml(): string {
 
       if (params.get('merge') === 'true' && analystsList.length >= 2) {
         openMergeModal(analystsList[0].id, analystsList[0].name);
+      }
+    }
+
+    // Initialization on page load
+    window.addEventListener('DOMContentLoaded', async () => {
+      const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+      if (!token) {
+        showAuthScreen();
+        return;
+      }
+
+      try {
+        const res = await apiFetch('/api/auth/me');
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          currentUser = data.user;
+          currentAuthToken = token;
+          showAppScreen();
+          await initializeAppViews();
+        } else {
+          sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+          showAuthScreen();
+        }
+      } catch (err) {
+        sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+        showAuthScreen();
       }
     });
 
@@ -1412,7 +1686,7 @@ function renderMobileAppHtml(): string {
       document.getElementById('screen-analyst-detail').classList.remove('hidden');
 
       try {
-        const res = await fetch('/api/analysts/' + analystId);
+        const res = await apiFetch('/api/analysts/' + analystId);
         const a = await res.json();
         const cred = a.credibility || {};
 
@@ -1461,7 +1735,7 @@ function renderMobileAppHtml(): string {
     // Refresh Daily Limits
     async function refreshDailyLimits() {
       try {
-        const res = await fetch('/api/daily-limit');
+        const res = await apiFetch('/api/daily-limit');
         const data = await res.json();
 
         const badge = document.getElementById('daily-count-badge');
@@ -1489,7 +1763,7 @@ function renderMobileAppHtml(): string {
     // Fetch and populate analysts
     async function refreshAnalysts() {
       try {
-        const res = await fetch('/api/analysts');
+        const res = await apiFetch('/api/analysts');
         const data = await res.json();
         analystsList = data.analysts || [];
 
@@ -1519,7 +1793,7 @@ function renderMobileAppHtml(): string {
     // Fetch and populate predictions
     async function refreshPredictions() {
       try {
-        const res = await fetch('/api/predictions?status=' + currentPredictionFilter);
+        const res = await apiFetch('/api/predictions?status=' + currentPredictionFilter);
         const data = await res.json();
         predictionsList = data.predictions || [];
         renderPredictionsList();
@@ -1667,7 +1941,7 @@ function renderMobileAppHtml(): string {
       if (!text.trim()) return;
 
       try {
-        const res = await fetch('/api/parse-paste', {
+        const res = await apiFetch('/api/parse-paste', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text })
@@ -1723,7 +1997,7 @@ function renderMobileAppHtml(): string {
       };
 
       try {
-        const res = await fetch('/api/predictions', {
+        const res = await apiFetch('/api/predictions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -1809,7 +2083,7 @@ function renderMobileAppHtml(): string {
       const aliases = handle.trim() ? [{ platform, handle: handle.trim().replace(/^@/, '') }] : [];
 
       try {
-        const res = await fetch('/api/analysts', {
+        const res = await apiFetch('/api/analysts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, aliases })
@@ -1835,7 +2109,7 @@ function renderMobileAppHtml(): string {
       }
 
       try {
-        const res = await fetch('/api/analysts/' + targetId + '/merge', {
+        const res = await apiFetch('/api/analysts/' + targetId + '/merge', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sourceAnalystId: sourceId })
@@ -1862,7 +2136,7 @@ function renderMobileAppHtml(): string {
 
     async function refreshBotStatus() {
       try {
-        const res = await fetch('/api/bot/status');
+        const res = await apiFetch('/api/bot/status');
         if (res.ok) {
           const status = await res.json();
           const badge = document.getElementById('settings-bot-status');
@@ -1889,7 +2163,7 @@ function renderMobileAppHtml(): string {
 
     async function handleActivateBot() {
       try {
-        const res = await fetch('/api/bot/activate', { method: 'POST' });
+        const res = await apiFetch('/api/bot/activate', { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
           if (data.deepLink) {
@@ -1905,10 +2179,10 @@ function renderMobileAppHtml(): string {
 
     async function handleToggleNotifications() {
       try {
-        const statusRes = await fetch('/api/bot/status');
+        const statusRes = await apiFetch('/api/bot/status');
         const status = await statusRes.json();
         const newSetting = !status.enabled;
-        const res = await fetch('/api/bot/toggle-notifications', {
+        const res = await apiFetch('/api/bot/toggle-notifications', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ enabled: newSetting })

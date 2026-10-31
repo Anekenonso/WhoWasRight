@@ -170,15 +170,34 @@ export function isDemoUser(user: { telegram_id: number | string }): boolean {
 
 /**
  * Cleans up expired demo sessions and their associated ephemeral user records.
+ *
+ * Scope:
+ * - Only demo users with telegram_id < 0 are targeted.
+ * - Real users (telegram_id > 0) are strictly excluded at the database query level.
+ * - Deletes demo users where either:
+ *   1. All associated sessions have expired (MAX(expires_at) < NOW()), OR
+ *   2. No unexpired active sessions exist and user was created > 5 minutes ago.
+ * - Cascading foreign keys on users(id) automatically clean up predictions, events,
+ *   analysts, outbox records, and outcome events without leaving orphaned data.
+ * - Operation is idempotent and safe to invoke repeatedly from cron/maintenance workers.
  */
 export async function cleanupExpiredDemoSessions(): Promise<number> {
   const res = await query(`
     DELETE FROM users
     WHERE telegram_id < 0
-      AND id IN (
-        SELECT user_id FROM sessions
-        GROUP BY user_id
-        HAVING MAX(expires_at) < NOW()
+      AND (
+        id IN (
+          SELECT user_id FROM sessions
+          GROUP BY user_id
+          HAVING MAX(expires_at) < NOW()
+        )
+        OR (
+          created_at < NOW() - INTERVAL '5 minutes'
+          AND NOT EXISTS (
+            SELECT 1 FROM sessions s
+            WHERE s.user_id = users.id AND s.expires_at > NOW()
+          )
+        )
       );
   `);
   return res.rowCount || 0;

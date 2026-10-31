@@ -28,6 +28,7 @@ import { runPhase3RememberSliceIntegrationTests } from './integration/phase3-rem
 import { runGate3OutboxResilienceTests } from './integration/gate3-outbox-resilience.test.ts';
 import { runPhase5UnitTests } from './unit/phase5-telegram-settler.test.ts';
 import { runPhase5IntegrationTests } from './integration/phase5-settlement.test.ts';
+import { runAuthHardeningCorrectionsTests } from './integration/auth-hardening-corrections.test.ts';
 import { closeDbPool } from '../src/core/db.ts';
 
 async function main() {
@@ -86,24 +87,19 @@ async function main() {
   let p3Count = 0;
   let gate3Count = 0;
   let p5IntCount = 0;
+  let authHardeningCount = 0;
 
   async function runWithTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
-    const maxRetries = 3;
-    let lastErr: any;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (err?.code === 'ENOTFOUND' || err?.code === 'ECONNRESET' || err?.code === 'ETIMEDOUT') {
+        console.log('Transient network error encountered, retrying in 1.5s...');
+        await new Promise(r => setTimeout(r, 1500));
         return await fn();
-      } catch (err: any) {
-        lastErr = err;
-        if (err?.code === 'ENOTFOUND' || err?.code === 'ECONNRESET' || err?.code === 'ETIMEDOUT') {
-          console.log(`Transient network error (${err.code}), retrying attempt ${attempt}/${maxRetries} in ${attempt * 1.5}s...`);
-          await new Promise(r => setTimeout(r, attempt * 1500));
-          continue;
-        }
-        throw err;
       }
+      throw err;
     }
-    throw lastErr;
   }
 
   // 9. Database Domain Integration Tests (Phase 1)
@@ -170,6 +166,17 @@ async function main() {
   } catch (err: unknown) {
     totalFailures.push(`Phase 5 integration exception: ${(err as Error).message}`);
     console.error('Fatal Phase 5 Integration Error:', err);
+  }
+
+  // 15. Auth Hardening & Demo Isolation Integration Tests
+  try {
+    const authRes = await runWithTransientRetry(() => runAuthHardeningCorrectionsTests());
+    authHardeningCount = authRes.count;
+    totalTests += authRes.count;
+    totalFailures.push(...authRes.failures);
+  } catch (err: unknown) {
+    totalFailures.push(`Auth Hardening integration exception: ${(err as Error).message}`);
+    console.error('Fatal Auth Hardening Integration Error:', err);
   } finally {
     await closeDbPool();
   }
@@ -193,6 +200,7 @@ async function main() {
   console.log(`12. Phase 3 Remember Slice Tests:            ${p3Count} tests`);
   console.log(`13. Gate 3 Outbox Resilience Tests:          ${gate3Count} tests`);
   console.log(`14. Phase 5 Integration Tests (Settlement):  ${p5IntCount} tests`);
+  console.log(`15. Auth Hardening & Demo Isolation Tests:    ${authHardeningCount} tests`);
   console.log('------------------------------------------------------------');
   console.log(`Total Invariants & Assertions Tested: ${totalTests}`);
   console.log(`Total Passed:                         ${passedCount}`);

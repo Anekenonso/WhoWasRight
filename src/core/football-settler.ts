@@ -134,7 +134,7 @@ export async function runSettlementCycle(): Promise<SettlementRunResult> {
     errors: [],
   };
 
-  // 1. Find all distinct fixtures for PENDING football predictions
+  // 1. Find all distinct fixtures for PENDING football predictions (excluding demo users with telegram_id < 0)
   const fixtureRes = await query<{
     api_fixture_id: string;
     kickoff_utc: string;
@@ -142,10 +142,12 @@ export async function runSettlementCycle(): Promise<SettlementRunResult> {
     `SELECT DISTINCT e.api_fixture_id, e.start_at_utc as kickoff_utc
      FROM predictions p
      JOIN events e ON e.id = p.event_id
+     JOIN users u ON u.id = p.user_id
      WHERE p.outcome = 'PENDING'
        AND e.sport = 'FOOTBALL'
        AND e.api_fixture_id IS NOT NULL
        AND e.status NOT IN ('CANCELLED', 'VOID')
+       AND u.telegram_id > 0
      ORDER BY e.start_at_utc ASC;`
   );
 
@@ -203,9 +205,11 @@ export async function runSettlementCycle(): Promise<SettlementRunResult> {
          FROM predictions p
          JOIN events e ON e.id = p.event_id
          JOIN analysts a ON a.id = p.analyst_id
+         JOIN users u ON u.id = p.user_id
          WHERE e.api_fixture_id = $1
            AND p.outcome = 'PENDING'
-           AND e.sport = 'FOOTBALL';`,
+           AND e.sport = 'FOOTBALL'
+           AND u.telegram_id > 0;`,
         [fixtureId]
       );
 

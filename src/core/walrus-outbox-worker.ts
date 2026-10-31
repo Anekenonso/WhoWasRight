@@ -76,12 +76,13 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
 
   try {
     // 1. Lock batch of eligible outbox records (SKIP LOCKED prevents worker contention)
+    // Demo accounts (telegram_id < 0) are strictly excluded at database level from Walrus writes
     await client.query('BEGIN');
     const queryParams: any[] = [batchSize];
     let userFilter = '';
     if (options.userId) {
       queryParams.push(options.userId);
-      userFilter = ` AND user_id = $${queryParams.length}`;
+      userFilter = ` AND mo.user_id = $${queryParams.length}`;
     }
 
     const outboxRes = await client.query<{
@@ -91,12 +92,15 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
       payload: string;
       attempts: number;
     }>(`
-      SELECT id, user_id, event_key, payload, attempts
-      FROM memory_outbox
-      WHERE status = 'PENDING' AND next_retry_at <= NOW()${userFilter}
-      ORDER BY created_at ASC
+      SELECT mo.id, mo.user_id, mo.event_key, mo.payload, mo.attempts
+      FROM memory_outbox mo
+      JOIN users u ON u.id = mo.user_id
+      WHERE mo.status = 'PENDING'
+        AND mo.next_retry_at <= NOW()
+        AND u.telegram_id > 0${userFilter}
+      ORDER BY mo.created_at ASC
       LIMIT $1
-      FOR UPDATE SKIP LOCKED;
+      FOR UPDATE OF mo SKIP LOCKED;
     `, queryParams);
 
     if (outboxRes.rows.length === 0) {

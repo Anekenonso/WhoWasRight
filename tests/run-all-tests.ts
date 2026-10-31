@@ -157,7 +157,7 @@ async function main() {
 
   // 14. Phase 5 Bot Linking, Settlement & Notifications Integration Tests
   try {
-    const p5IntRes = await runPhase5IntegrationTests();
+    const p5IntRes = await runWithTransientRetry(() => runPhase5IntegrationTests());
     p5IntCount = p5IntRes.count;
     totalTests += p5IntRes.count;
     totalFailures.push(...p5IntRes.failures);

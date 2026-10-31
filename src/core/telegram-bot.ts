@@ -19,6 +19,7 @@
 
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { query, withTransaction } from './db.ts';
+import { settlePrediction, type PredictionOutcome } from './predictions.ts';
 
 // ============================================================
 // Types
@@ -549,13 +550,88 @@ function escapeMarkdown(text: string): string {
 // Answer Callback Query (acknowledge button press)
 // ============================================================
 export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
-  await callTelegramApi('answerCallbackQuery', {
-    callback_query_id: callbackQueryId,
-    text: text ?? '',
-  });
+  try {
+    await callTelegramApi('answerCallbackQuery', {
+      callback_query_id: callbackQueryId,
+      text: text ?? '',
+    });
+  } catch {
+    // Non-fatal: answering Telegram button spinner is best-effort and must not fail settlement
+  }
 }
 
 export async function sendMessage(chatId: number, text: string): Promise<void> {
   await callTelegramApi('sendMessage', { chat_id: chatId, text });
 }
+
+/**
+ * Processes an incoming inline button callback query from Telegram.
+ * Enforces:
+ * 1. HMAC signature and expiry verification via verifyCallbackNonce.
+ * 2. Cross-user isolation: verification that chat_id belongs to the prediction's owner.
+ * 3. Atomic transition: exactly one execution succeeds in PostgreSQL; concurrent or
+ *    subsequent requests receive an already-settled response without duplicate side effects.
+ */
+export async function handleTelegramCallbackQuery(params: {
+  callbackData: string;
+  fromChatId: number;
+  callbackQueryId: string;
+}): Promise<{
+  success: boolean;
+  outcome?: string;
+  alreadySettled?: boolean;
+  unauthorized?: boolean;
+  error?: string;
+}> {
+  const { callbackData, fromChatId, callbackQueryId } = params;
+
+  if (!callbackData.startsWith('settle:')) {
+    return { success: false, error: 'Unknown callback prefix' };
+  }
+
+  const parsed = verifyCallbackNonce(callbackData, fromChatId);
+  if (!parsed) {
+    await answerCallbackQuery(callbackQueryId, 'This button has expired. Please request a new settlement prompt.');
+    return { success: false, error: 'Expired or invalid signature' };
+  }
+
+  const { predictionId, outcome } = parsed;
+  const ownerRes = await query<{ user_id: string }>(
+    'SELECT p.user_id FROM predictions p JOIN bot_links bl ON bl.user_id = p.user_id WHERE p.id = $1 AND bl.telegram_chat_id = $2;',
+    [predictionId, fromChatId]
+  );
+  if (ownerRes.rows.length === 0) {
+    await answerCallbackQuery(callbackQueryId, 'Unauthorized');
+    return { success: false, unauthorized: true, error: 'Unauthorized' };
+  }
+
+  const userId = ownerRes.rows[0].user_id;
+  const allowedOutcomes = ['WON', 'LOST', 'PUSH'];
+  if (!allowedOutcomes.includes(outcome)) {
+    await answerCallbackQuery(callbackQueryId, 'Invalid outcome');
+    return { success: false, error: 'Invalid outcome' };
+  }
+
+  try {
+    await settlePrediction({
+      userId,
+      predictionId,
+      newOutcome: outcome as PredictionOutcome,
+      source: 'MANUAL_USER',
+      verification: 'SELF_REPORTED',
+      evidenceJson: { source: 'telegram_callback', chatId: fromChatId },
+    });
+    await answerCallbackQuery(callbackQueryId, 'Recorded as ' + outcome + ' - self-reported');
+    return { success: true, outcome };
+  } catch (settleErr: unknown) {
+    const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+    if (msg.includes('already resolved') || msg.includes('already settled')) {
+      await answerCallbackQuery(callbackQueryId, 'Already settled.');
+      return { success: false, alreadySettled: true, error: 'Already settled.' };
+    }
+    await answerCallbackQuery(callbackQueryId, 'Could not record result. Please use the app.');
+    return { success: false, error: msg };
+  }
+}
+
 

@@ -26,8 +26,8 @@ export interface MatchScoreEvidence {
   awayTeam: string;
   homeGoals: number;
   awayGoals: number;
-  status: 'FINISHED' | 'POSTPONED' | 'CANCELLED' | 'ABANDONED' | 'IN_PLAY';
-  statusShort?: string; // FT, AET, PEN, PST, CANC, ABD
+  status: 'FINISHED' | 'POSTPONED' | 'CANCELLED' | 'ABANDONED' | 'SUSPENDED' | 'WALKOVER' | 'IN_PLAY';
+  statusShort?: string; // FT, AET, PEN, PST, CANC, ABD, SUSP, WO
   settledAt?: string;
 }
 
@@ -49,12 +49,30 @@ export function adjudicateFootballPrediction(
   const normMarket = market.trim().toUpperCase();
   const normSel = selection.trim().toUpperCase();
 
-  // 1. Non-finished status adjudication
+  // 1. Non-finished / Non-standard status adjudication
   if (evidence.status === 'CANCELLED') {
     return {
       outcome: 'VOID',
       verification: 'API_VERIFIED',
       reason: 'Match cancelled; outcome is void',
+      isDecisive: false,
+    };
+  }
+
+  if (evidence.status === 'WALKOVER') {
+    return {
+      outcome: 'UNSUPPORTED_REQUIRES_MANUAL',
+      verification: 'UNVERIFIED',
+      reason: 'Match awarded by walkover (WO); no approved auto-void policy exists, routed to manual review to prevent silent voiding',
+      isDecisive: false,
+    };
+  }
+
+  if (evidence.status === 'SUSPENDED') {
+    return {
+      outcome: 'PENDING',
+      verification: 'UNVERIFIED',
+      reason: 'Match is SUSPENDED; must not settle prematurely; awaiting official resumption or competition ruling',
       isDecisive: false,
     };
   }

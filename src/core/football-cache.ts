@@ -28,14 +28,18 @@ export class SportRateLimiter {
   private requestCountToday = 0;
   private lastResetDay = new Date().getUTCDate();
 
-  constructor(sport: string = 'FOOTBALL', dailyLimit: number = 100, hardStopThreshold: number = 95) {
+  constructor(sport: string = 'FOOTBALL', dailyLimit: number = 100, hardStopThreshold?: number) {
     this.sport = sport.toUpperCase();
     this.dailyLimit = dailyLimit;
-    this.hardStopThreshold = hardStopThreshold;
+    this.hardStopThreshold = hardStopThreshold ?? (this.sport === 'FOOTBALL' ? 95 : dailyLimit);
   }
 
   public getSport(): string {
     return this.sport;
+  }
+
+  public getHardStopThreshold(): number {
+    return this.hardStopThreshold;
   }
 
   public canMakeRequest(): boolean {
@@ -49,6 +53,95 @@ export class SportRateLimiter {
 
   public recordRequest(): void {
     this.requestCountToday++;
+  }
+
+  /**
+   * Atomically reserves a quota slot in PostgreSQL.
+   * Enforces strict isolation per-sport and atomic increment with row lock.
+   * If usage is below hardStopThreshold, increments request_count and returns allowed=true.
+   * If hardStopThreshold is already reached, rejects without incrementing and returns allowed=false.
+   * Survives process restarts and multiple instances.
+   */
+  public async reserveQuota(): Promise<{ allowed: boolean; used: number; remaining: number }> {
+    try {
+      const res = await query<{ request_count: number }>(`
+        INSERT INTO api_quota_usage (sport, usage_date, request_count, updated_at)
+        VALUES ($1, (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date, 1, NOW())
+        ON CONFLICT (sport, usage_date) DO UPDATE
+        SET request_count = api_quota_usage.request_count + 1, updated_at = NOW()
+        WHERE api_quota_usage.request_count < $2
+        RETURNING request_count;
+      `, [this.sport, this.hardStopThreshold]);
+
+      if (res.rows.length > 0) {
+        const used = Number(res.rows[0].request_count);
+        this.requestCountToday = used;
+        return {
+          allowed: true,
+          used,
+          remaining: Math.max(0, this.dailyLimit - used),
+        };
+      } else {
+        const countRes = await query<{ request_count: number }>(`
+          SELECT request_count FROM api_quota_usage
+          WHERE sport = $1 AND usage_date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
+        `, [this.sport]);
+        const used = countRes.rows.length > 0 ? Number(countRes.rows[0].request_count) : this.hardStopThreshold;
+        this.requestCountToday = used;
+        return {
+          allowed: false,
+          used,
+          remaining: Math.max(0, this.dailyLimit - used),
+        };
+      }
+    } catch {
+      // In-memory fallback if DB is temporarily unavailable or in mock test env
+      const today = new Date().getUTCDate();
+      if (today !== this.lastResetDay) {
+        this.requestCountToday = 0;
+        this.lastResetDay = today;
+      }
+      if (this.requestCountToday < this.hardStopThreshold) {
+        this.requestCountToday++;
+        return {
+          allowed: true,
+          used: this.requestCountToday,
+          remaining: Math.max(0, this.dailyLimit - this.requestCountToday),
+        };
+      }
+      return {
+        allowed: false,
+        used: this.requestCountToday,
+        remaining: Math.max(0, this.dailyLimit - this.requestCountToday),
+      };
+    }
+  }
+
+  public async syncFromDb(): Promise<{ used: number; limit: number; remaining: number }> {
+    try {
+      const res = await query<{ request_count: number }>(`
+        SELECT request_count FROM api_quota_usage
+        WHERE sport = $1 AND usage_date = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date;
+      `, [this.sport]);
+      if (res.rows.length > 0) {
+        this.requestCountToday = Number(res.rows[0].request_count);
+      } else {
+        this.requestCountToday = 0;
+      }
+    } catch {
+      // ignore
+    }
+    return this.getUsage();
+  }
+
+  public async resetQuotaInDbForTesting(): Promise<void> {
+    this.requestCountToday = 0;
+    this.lastResetDay = new Date().getUTCDate();
+    try {
+      await query(`DELETE FROM api_quota_usage WHERE sport = $1;`, [this.sport]);
+    } catch {
+      // ignore
+    }
   }
 
   public getUsage(): { used: number; limit: number; remaining: number } {
@@ -70,12 +163,13 @@ const sportLimiters = new Map<string, SportRateLimiter>();
 export function getSportRateLimiter(
   sport: string = 'FOOTBALL',
   dailyLimit: number = 100,
-  hardStopThreshold: number = 95
+  hardStopThreshold?: number
 ): SportRateLimiter {
   const norm = sport.toUpperCase();
   let limiter = sportLimiters.get(norm);
   if (!limiter) {
-    limiter = new SportRateLimiter(norm, dailyLimit, hardStopThreshold);
+    const stop = hardStopThreshold ?? (norm === 'FOOTBALL' ? 95 : dailyLimit);
+    limiter = new SportRateLimiter(norm, dailyLimit, stop);
     sportLimiters.set(norm, limiter);
   }
   return limiter;
@@ -127,8 +221,9 @@ export async function getOrFetchFixture(
     };
   }
 
-  // 2. Check Rate Limiter
-  if (!globalFootballRateLimiter.canMakeRequest()) {
+  // 2. Check and atomically reserve Rate Limiter slot before external call
+  const reservation = await globalFootballRateLimiter.reserveQuota();
+  if (!reservation.allowed) {
     return {
       fixture: null,
       fromCache: false,
@@ -141,8 +236,13 @@ export async function getOrFetchFixture(
     return { fixture: null, fromCache: false };
   }
 
-  globalFootballRateLimiter.recordRequest();
-  const freshData = await fetchFn(fixtureId);
+  let freshData: any = null;
+  try {
+    freshData = await fetchFn(fixtureId);
+  } catch (err) {
+    // Quota slot was reserved atomically prior to call; failed attempt consumes slot
+    throw err;
+  }
   if (!freshData) {
     return { fixture: null, fromCache: false };
   }

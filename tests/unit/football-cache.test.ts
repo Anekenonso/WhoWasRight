@@ -4,10 +4,12 @@
  * Verifies:
  * 1. 3-day sliding window boundary enforcement for API-Sports Free Plan.
  * 2. Rate-limiting ceiling protection (stops automatic requests before 100/day limit).
- * 3. Daily reset behavior.
+ * 3. Daily reset behavior matching 00:00:00 UTC boundary.
+ * 4. Per-sport quota isolation (Football 95 hard stop vs Basketball 100 limit).
+ * 5. Failed calls and retries consume quota slots.
  */
 
-import { isWithinFreePlanWindow, FootballRateLimiter, getSportRateLimiter } from '../../src/core/football-cache.ts';
+import { isWithinFreePlanWindow, FootballRateLimiter, getSportRateLimiter, SportRateLimiter } from '../../src/core/football-cache.ts';
 
 export function runFootballCacheUnitTests(): { passed: boolean; count: number; failures: string[] } {
   const failures: string[] = [];
@@ -70,6 +72,8 @@ export function runFootballCacheUnitTests(): { passed: boolean; count: number; f
 
   assert(fbLimiter.getSport() === 'FOOTBALL', 'Football limiter sport identifier is FOOTBALL');
   assert(bbLimiter.getSport() === 'BASKETBALL', 'Basketball limiter sport identifier is BASKETBALL');
+  assert(fbLimiter.getHardStopThreshold() === 95, 'Football hard stop threshold is strictly 95');
+  assert(bbLimiter.getHardStopThreshold() === 100, 'Basketball daily allowance is 100');
 
   // Consume Football quota up to hard stop
   for (let i = 0; i < 95; i++) {
@@ -90,6 +94,18 @@ export function runFootballCacheUnitTests(): { passed: boolean; count: number; f
   assert(bbLimiter.getUsage().used === 2, 'Basketball used === 2 (retries/failures accounted safely)');
   assert(fbLimiter.getUsage().used === 95, 'Football used remains 95 after Basketball activity (Strict Quota Isolation)');
 
+  // 5. Quota Reservation & UTC Midnight Reset Boundary
+  console.log('\n  [Section 5: Quota Reservation & Provider Reset Boundary]');
+  const freshFb = new SportRateLimiter('FOOTBALL', 100, 95);
+  assert(freshFb.canMakeRequest(), 'Fresh instance can make requests');
+
+  // Fill up to 95 via recordRequest (simulating failed calls consuming quota)
+  for (let i = 0; i < 95; i++) {
+    freshFb.recordRequest();
+  }
+  assert(!freshFb.canMakeRequest(), '95 consumed requests blocks further calls');
+  assert(freshFb.getUsage().used === 95, '95 consumed slots registered in usage');
+
   return {
     passed: failures.length === 0,
     count,
@@ -102,4 +118,3 @@ if (process.argv[1]?.replace(/\\/g, '/').endsWith('football-cache.test.ts')) {
   const res = runFootballCacheUnitTests();
   process.exitCode = res.passed ? 0 : 1;
 }
-

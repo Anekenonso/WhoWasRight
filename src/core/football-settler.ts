@@ -88,9 +88,13 @@ export function parseFixtureEvidence(fixtureData: any): MatchScoreEvidence | nul
     status = 'FINISHED';
   } else if (statusShort === 'PST') {
     status = 'POSTPONED';
-  } else if (['CANC', 'WO'].includes(statusShort)) {
+  } else if (statusShort === 'CANC') {
     status = 'CANCELLED';
-  } else if (['ABD', 'INT', 'SUSP'].includes(statusShort)) {
+  } else if (statusShort === 'WO') {
+    status = 'WALKOVER';
+  } else if (statusShort === 'SUSP') {
+    status = 'SUSPENDED';
+  } else if (['ABD', 'INT'].includes(statusShort)) {
     status = 'ABANDONED';
   } else if (['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE'].includes(statusShort)) {
     status = 'IN_PLAY';

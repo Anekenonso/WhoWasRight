@@ -34,9 +34,11 @@ import {
   enqueueNotification,
   generateCallbackNonce,
   verifyCallbackNonce,
+  handleTelegramCallbackQuery,
 } from '../../src/core/telegram-bot.ts';
 import { settlePrediction } from '../../src/core/predictions.ts';
-import { adjudicateFootballPrediction } from '../../src/core/settlement.ts';
+import { adjudicateFootballPrediction, executeAutomatedSettlement } from '../../src/core/settlement.ts';
+import { SportRateLimiter } from '../../src/core/football-cache.ts';
 
 export async function runPhase5IntegrationTests(): Promise<{ passed: boolean; count: number; failures: string[] }> {
   const failures: string[] = [];
@@ -494,9 +496,188 @@ export async function runPhase5IntegrationTests(): Promise<{ passed: boolean; co
   );
   assert(Number(cbAuditCount.rows[0].count) === 1, 'Exactly one audit event recorded (no duplicate transition from replay)');
 
+    // ============================================================
+  // 17. Quota Persistence & Concurrency (Audit 2)
   // ============================================================
+  console.log('\n  [Section 17: Quota Persistence & Concurrency]');
+
+  const testSportFb = `TEST_FB_${suffix}`;
+  const testSportBb = `TEST_BB_${suffix}`;
+
+  await query(`DELETE FROM api_quota_usage WHERE sport IN ($1, $2);`, [testSportFb, testSportBb]);
+
+  const fbPersistentLimiter = new SportRateLimiter(testSportFb, 100, 95);
+  const bbPersistentLimiter = new SportRateLimiter(testSportBb, 100, 100);
+
+  // A. Concurrent Quota Reservations: 105 concurrent reservation attempts for Football (ceiling 95)
+  const reservationPromises = Array.from({ length: 105 }, () => fbPersistentLimiter.reserveQuota());
+  const reservationResults = await Promise.all(reservationPromises);
+
+  const allowedCount = reservationResults.filter(r => r.allowed).length;
+  const rejectedCount = reservationResults.filter(r => !r.allowed).length;
+
+  assert(allowedCount === 95, 'Concurrent reservations: exactly 95 requests allowed for Football ceiling');
+  assert(rejectedCount === 10, 'Concurrent reservations: remaining 10 requests atomically rejected');
+
+  // Verify authoritative state in PostgreSQL
+  const dbQuotaRes = await query<{ request_count: number }>(
+    `SELECT request_count FROM api_quota_usage WHERE sport = $1;`,
+    [testSportFb]
+  );
+  assert(Number(dbQuotaRes.rows[0].request_count) === 95, 'PostgreSQL authoritative counter is exactly 95');
+
+  // B. Multi-Sport Isolation in PostgreSQL: Basketball is completely unaffected
+  const bbRes1 = await bbPersistentLimiter.reserveQuota();
+  assert(bbRes1.allowed === true, 'Basketball quota reservation succeeds independently of Football exhaustion');
+  assert(bbRes1.used === 1, 'Basketball usage starts at 1');
+
+  // C. Process Restart / Multi-Instance Persistence
+  const restartedInstance = new SportRateLimiter(testSportFb, 100, 95);
+  const restartAttempt = await restartedInstance.reserveQuota();
+  assert(restartAttempt.allowed === false, 'Process restart does not reset counter: rejects further requests at ceiling');
+  assert(restartAttempt.used === 95, 'Restarted instance reads 95 used slots from PostgreSQL');
+
+  // D. Failed Provider Calls Consume Quota
+  const testFailSport = `TEST_FAIL_${suffix}`;
+  await query(`DELETE FROM api_quota_usage WHERE sport = $1;`, [testFailSport]);
+  const failLimiter = new SportRateLimiter(testFailSport, 100, 95);
+  let failedCallThrew = false;
+  try {
+    await failLimiter.reserveQuota();
+    throw new Error('Provider 500 error');
+  } catch {
+    failedCallThrew = true;
+  }
+  assert(failedCallThrew, 'Failed provider call throws error as expected');
+  const failUsage = await failLimiter.syncFromDb();
+  assert(failUsage.used === 1, 'Failed provider call consumed reserved quota slot');
+
+  // ============================================================
+  // 18. Telegram Concurrent Callback Safety & Race Resolution (Audit 3)
+  // ============================================================
+  console.log('\n  [Section 18: Telegram Concurrent Callback Safety & Race Resolution]');
+
+  // A. Concurrent Callback Arrival: 3 identical callbacks simultaneously
+  const predConcurrentRes = await query<{ id: string }>(
+    `INSERT INTO predictions (user_id, event_id, analyst_id, market, selection, outcome, verification)
+     VALUES ($1, $2, $3, 'TOTAL_GOALS', 'Over 2.5', 'PENDING', 'UNVERIFIED')
+     RETURNING id;`,
+    [userId1, settleEventId, analystId]
+  );
+  const predConcurrentId = predConcurrentRes.rows[0].id;
+
+  const concurrentNonce = generateCallbackNonce({
+    predictionId: predConcurrentId,
+    outcome: 'WON',
+    chatId: chatId1,
+  });
+
+  const concurrentCallbacks = await Promise.all([
+    handleTelegramCallbackQuery({
+      callbackData: concurrentNonce,
+      fromChatId: chatId1,
+      callbackQueryId: `cbq_1_${suffix}`,
+    }),
+    handleTelegramCallbackQuery({
+      callbackData: concurrentNonce,
+      fromChatId: chatId1,
+      callbackQueryId: `cbq_2_${suffix}`,
+    }),
+    handleTelegramCallbackQuery({
+      callbackData: concurrentNonce,
+      fromChatId: chatId1,
+      callbackQueryId: `cbq_3_${suffix}`,
+    }),
+  ]);
+
+  const cbSuccesses = concurrentCallbacks.filter(c => c.success);
+  const cbAlreadySettled = concurrentCallbacks.filter(c => c.alreadySettled);
+
+  assert(cbSuccesses.length === 1, 'Concurrent callbacks: exactly 1 callback succeeds in settling prediction');
+  assert(cbAlreadySettled.length === 2, 'Concurrent callbacks: remaining 2 callbacks safely return alreadySettled');
+
+  const pCheck = await query<{ outcome: string; verification: string }>(
+    `SELECT outcome, verification FROM predictions WHERE id = $1;`,
+    [predConcurrentId]
+  );
+  assert(pCheck.rows[0].outcome === 'WON', 'Prediction outcome transitioned to WON');
+  assert(pCheck.rows[0].verification === 'SELF_REPORTED', 'Prediction verification is SELF_REPORTED');
+
+  const concurrentAuditRes = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM outcome_events WHERE prediction_id = $1;`,
+    [predConcurrentId]
+  );
+  assert(Number(concurrentAuditRes.rows[0].count) === 1, 'Exactly one audit event committed (no duplicate audit entries)');
+
+  const outboxRes = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM memory_outbox WHERE user_id = $1 AND event_key LIKE $2;`,
+    [userId1, `%${predConcurrentId}%`]
+  );
+  assert(Number(outboxRes.rows[0].count) === 1, 'Exactly one memory outbox entry enqueued (no duplicate outbox records)');
+
+  // B. Race Between Automated Settlement and Telegram Manual Settlement
+  const predRaceRes = await query<{ id: string }>(
+    `INSERT INTO predictions (user_id, event_id, analyst_id, market, selection, outcome, verification)
+     VALUES ($1, $2, $3, 'TOTAL_GOALS', 'Under 0.5', 'PENDING', 'UNVERIFIED')
+     RETURNING id;`,
+    [userId1, settleEventId, analystId]
+  );
+  const predRaceId = predRaceRes.rows[0].id;
+
+  const raceEvidence: any = {
+    homeTeam: 'Arsenal',
+    awayTeam: 'Chelsea',
+    homeGoals: 2,
+    awayGoals: 1,
+    status: 'FINISHED',
+    statusShort: 'FT',
+  };
+
+  const raceNonce = generateCallbackNonce({
+    predictionId: predRaceId,
+    outcome: 'LOST',
+    chatId: chatId1,
+  });
+
+  const raceResults = await Promise.allSettled([
+    executeAutomatedSettlement({
+      userId: userId1,
+      predictionId: predRaceId,
+      evidence: raceEvidence,
+    }),
+    handleTelegramCallbackQuery({
+      callbackData: raceNonce,
+      fromChatId: chatId1,
+      callbackQueryId: `cbq_race_${suffix}`,
+    }),
+  ]);
+
+  const raceFulfilled = raceResults.filter(r => r.status === 'fulfilled');
+  assert(raceFulfilled.length === 2, 'Both race handlers executed to completion');
+
+  const raceAudit = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM outcome_events WHERE prediction_id = $1;`,
+    [predRaceId]
+  );
+  assert(Number(raceAudit.rows[0].count) === 1, 'Race resolution: exactly one outcome transition event recorded');
+
+  // C. Unlinked Chat Callback Rejection
+  const unlinkedNonce = generateCallbackNonce({
+    predictionId: predConcurrentId,
+    outcome: 'WON',
+    chatId: 999999999,
+  });
+  const unlinkedRes = await handleTelegramCallbackQuery({
+    callbackData: unlinkedNonce,
+    fromChatId: 999999999,
+    callbackQueryId: `cbq_unlinked_${suffix}`,
+  });
+  assert(unlinkedRes.unauthorized === true, 'Callback from unlinked/wrong chat is rejected as unauthorized');
+
+// ============================================================
   // Cleanup
   // ============================================================
+  await query(`DELETE FROM api_quota_usage WHERE sport IN ($1, $2, $3);`, [testSportFb, testSportBb, testFailSport]);
   await query(`DELETE FROM notification_queue WHERE user_id = $1 OR user_id = $2;`, [userId1, userId2]);
   await query(`DELETE FROM bot_links WHERE user_id = $1 OR user_id = $2;`, [userId1, userId2]);
   await query(`DELETE FROM bot_link_tokens WHERE user_id = $1 OR user_id = $2;`, [userId1, userId2]);

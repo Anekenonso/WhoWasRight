@@ -38,6 +38,7 @@ import {
   answerCallbackQuery,
   sendMessage as sendTelegramMessage,
   processNotificationQueue,
+  handleTelegramCallbackQuery,
 } from '../core/telegram-bot.ts';
 import { verifyCronSecret, runSettlementCycle } from '../core/football-settler.ts';
 import { settlePrediction } from '../core/predictions.ts';
@@ -391,48 +392,12 @@ export function createWebServer(): http.Server {
           const fromChatId = cbq.from.id;
           const callbackQueryId = cbq.id;
 
-          if (callbackData.startsWith('settle:')) {
-            const parsed = verifyCallbackNonce(callbackData, fromChatId);
-            if (!parsed) {
-              await answerCallbackQuery(callbackQueryId, 'This button has expired. Please request a new settlement prompt.');
-              return sendJson(res, 200, { ok: true });
-            }
-            const predictionId = parsed.predictionId;
-            const outcome = parsed.outcome;
-            const ownerRes = await query(
-              'SELECT p.user_id FROM predictions p JOIN bot_links bl ON bl.user_id = p.user_id WHERE p.id = $1 AND bl.telegram_chat_id = $2;',
-              [predictionId, fromChatId]
-            );
-            if (ownerRes.rows.length === 0) {
-              await answerCallbackQuery(callbackQueryId, 'Unauthorized');
-              return sendJson(res, 200, { ok: true });
-            }
-            const userId = ownerRes.rows[0].user_id;
-            const allowedOutcomes = ['WON', 'LOST', 'PUSH'];
-            if (!allowedOutcomes.includes(outcome)) {
-              await answerCallbackQuery(callbackQueryId, 'Invalid outcome');
-              return sendJson(res, 200, { ok: true });
-            }
-            try {
-              await settlePrediction({
-                userId,
-                predictionId,
-                newOutcome: outcome,
-                source: 'MANUAL_USER',
-                verification: 'SELF_REPORTED',
-                evidenceJson: { source: 'telegram_callback', chatId: fromChatId },
-              });
-              await answerCallbackQuery(callbackQueryId, 'Recorded as ' + outcome + ' - self-reported');
-            } catch (settleErr) {
-              const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
-              if (msg.includes('already settled')) {
-                await answerCallbackQuery(callbackQueryId, 'Already settled.');
-              } else {
-                await answerCallbackQuery(callbackQueryId, 'Could not record result. Please use the app.');
-              }
-            }
-          }
-          return sendJson(res, 200, { ok: true });
+          const cbResult = await handleTelegramCallbackQuery({
+            callbackData,
+            fromChatId,
+            callbackQueryId,
+          });
+          return sendJson(res, 200, { ok: true, ...cbResult });
         }
         return sendJson(res, 200, { ok: true });
       }

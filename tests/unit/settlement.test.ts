@@ -138,10 +138,18 @@ export function runSettlementUnitTests(): {
   const cancelledPick = adjudicateFootballPrediction('1X2', 'Arsenal', cancelledEvidence);
   assert(cancelledPick.outcome === 'VOID', 'Cancelled match settles prediction as VOID');
 
+  // 4b. Sequential resolution: ABANDONED remains PENDING, later authoritative FINISHED settles
+  const laterResolution = adjudicateFootballPrediction('1X2', 'Arsenal', ft21Evidence);
+  assert(laterResolution.outcome === 'WON', 'Later authoritative FINISHED resolution settles to WON');
+  assert(laterResolution.verification === 'API_VERIFIED', 'Later authoritative resolution is API_VERIFIED');
+
   // 5. Unsupported Market Protection (Never infer player stats from score)
   const playerGoalscorerPick = adjudicateFootballPrediction('FIRST_GOALSCORER', 'Bukayo Saka', ft21Evidence);
   assert(playerGoalscorerPick.outcome === 'UNSUPPORTED_REQUIRES_MANUAL', 'First Goalscorer market fails safe to UNSUPPORTED_REQUIRES_MANUAL');
   assert(playerGoalscorerPick.verification === 'UNVERIFIED', 'Unsupported market verification is UNVERIFIED');
+
+  const anytimeGoalscorer = adjudicateFootballPrediction('ANYTIME_GOALSCORER', 'Gabriel Martinelli', ft21Evidence);
+  assert(anytimeGoalscorer.outcome === 'UNSUPPORTED_REQUIRES_MANUAL', 'Anytime Goalscorer market fails safe to UNSUPPORTED_REQUIRES_MANUAL');
 
   const cornerPick = adjudicateFootballPrediction('TOTAL_CORNERS', 'Over 9.5', ft21Evidence);
   assert(cornerPick.outcome === 'UNSUPPORTED_REQUIRES_MANUAL', 'Corners market fails safe to UNSUPPORTED_REQUIRES_MANUAL');

@@ -21,11 +21,22 @@ export interface CachedFixture {
   expiresAt: Date;
 }
 
-export class FootballRateLimiter {
-  private dailyLimit = 100;
-  private hardStopThreshold = 95;
+export class SportRateLimiter {
+  private sport: string;
+  private dailyLimit: number;
+  private hardStopThreshold: number;
   private requestCountToday = 0;
   private lastResetDay = new Date().getUTCDate();
+
+  constructor(sport: string = 'FOOTBALL', dailyLimit: number = 100, hardStopThreshold: number = 95) {
+    this.sport = sport.toUpperCase();
+    this.dailyLimit = dailyLimit;
+    this.hardStopThreshold = hardStopThreshold;
+  }
+
+  public getSport(): string {
+    return this.sport;
+  }
 
   public canMakeRequest(): boolean {
     const today = new Date().getUTCDate();
@@ -47,9 +58,36 @@ export class FootballRateLimiter {
       remaining: Math.max(0, this.dailyLimit - this.requestCountToday),
     };
   }
+
+  public resetForTesting(): void {
+    this.requestCountToday = 0;
+    this.lastResetDay = new Date().getUTCDate();
+  }
 }
 
-export const globalFootballRateLimiter = new FootballRateLimiter();
+const sportLimiters = new Map<string, SportRateLimiter>();
+
+export function getSportRateLimiter(
+  sport: string = 'FOOTBALL',
+  dailyLimit: number = 100,
+  hardStopThreshold: number = 95
+): SportRateLimiter {
+  const norm = sport.toUpperCase();
+  let limiter = sportLimiters.get(norm);
+  if (!limiter) {
+    limiter = new SportRateLimiter(norm, dailyLimit, hardStopThreshold);
+    sportLimiters.set(norm, limiter);
+  }
+  return limiter;
+}
+
+export class FootballRateLimiter extends SportRateLimiter {
+  constructor(dailyLimit: number = 100, hardStopThreshold: number = 95) {
+    super('FOOTBALL', dailyLimit, hardStopThreshold);
+  }
+}
+
+export const globalFootballRateLimiter = getSportRateLimiter('FOOTBALL');
 
 /**
  * Checks whether a given UTC date falls within the Free Plan's 3-day sliding window

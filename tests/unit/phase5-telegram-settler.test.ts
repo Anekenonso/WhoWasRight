@@ -98,6 +98,26 @@ export function runPhase5UnitTests(): { passed: boolean; count: number; failures
   const expiredNonce = parts.join(':');
   assert(verifyCallbackNonce(expiredNonce, chatId) === null, 'Expired nonce (>15 min) rejected');
 
+  // Tampered predictionId
+  const tamperedPred = nonce.split(':');
+  tamperedPred[1] = '00000000-0000-0000-0000-000000000000';
+  assert(verifyCallbackNonce(tamperedPred.join(':'), chatId) === null, 'Tampered predictionId in nonce rejected');
+
+  // Tampered outcome
+  const tamperedOutcome = nonce.split(':');
+  tamperedOutcome[2] = 'LOST';
+  assert(verifyCallbackNonce(tamperedOutcome.join(':'), chatId) === null, 'Tampered outcome in nonce rejected');
+
+  // Tampered chatId
+  const tamperedChat = nonce.split(':');
+  tamperedChat[3] = '111111111';
+  assert(verifyCallbackNonce(tamperedChat.join(':'), 111111111) === null, 'Tampered chatId in nonce rejected by HMAC check');
+
+  // Malformed non-numeric timestamp
+  const malformedTs = nonce.split(':');
+  malformedTs[4] = 'not_a_timestamp';
+  assert(verifyCallbackNonce(malformedTs.join(':'), chatId) === null, 'Non-numeric timestamp in nonce rejected');
+
   // Restore webhook secret
   if (originalWebhookSecret !== undefined) {
     process.env.TELEGRAM_WEBHOOK_SECRET = originalWebhookSecret;
@@ -202,15 +222,35 @@ export function runPhase5UnitTests(): { passed: boolean; count: number; failures
   // Postponed → PENDING
   const postponed = adjudicateFootballPrediction('1X2', 'Arsenal', { ...finishedEvidence, status: 'POSTPONED' as any });
   assert(postponed.outcome === 'PENDING', 'Postponed match remains PENDING');
+  assert(postponed.verification === 'UNVERIFIED', 'Postponed match is UNVERIFIED');
+
+  // Abandoned → PENDING (never silently reinterpreted as CANCELLED/VOID)
+  const abandoned = adjudicateFootballPrediction('1X2', 'Arsenal', { ...finishedEvidence, status: 'ABANDONED' as any });
+  assert(abandoned.outcome === 'PENDING', 'Abandoned match remains PENDING pending authoritative confirmation');
+  assert(abandoned.verification === 'UNVERIFIED', 'Abandoned match is UNVERIFIED');
 
   // Cancelled → VOID
   const cancelled = adjudicateFootballPrediction('1X2', 'Arsenal', { ...finishedEvidence, status: 'CANCELLED' as any });
   assert(cancelled.outcome === 'VOID', 'Cancelled match becomes VOID');
+  assert(cancelled.verification === 'API_VERIFIED', 'Cancelled match is API_VERIFIED');
+
+  // Sequential resolution: Initial poll was ABANDONED (PENDING), later poll is FINISHED (authoritative resolution)
+  const initialAbandoned = adjudicateFootballPrediction('1X2', 'Arsenal', { ...finishedEvidence, status: 'ABANDONED' as any });
+  assert(initialAbandoned.outcome === 'PENDING', 'Initial ABANDONED poll remains PENDING');
+  const laterResolution = adjudicateFootballPrediction('1X2', 'Arsenal', { ...finishedEvidence, status: 'FINISHED' });
+  assert(laterResolution.outcome === 'WON', 'Later authoritative FINISHED resolution settles to WON');
+  assert(laterResolution.verification === 'API_VERIFIED', 'Later authoritative resolution is API_VERIFIED');
 
   // Unsupported market — must never infer
   const goalscorer = adjudicateFootballPrediction('ANYTIME_GOALSCORER', 'Saka', finishedEvidence);
-  assert(goalscorer.outcome === 'UNSUPPORTED_REQUIRES_MANUAL', 'Unsupported market never auto-settled');
+  assert(goalscorer.outcome === 'UNSUPPORTED_REQUIRES_MANUAL', 'Unsupported anytime goalscorer never auto-settled');
   assert(goalscorer.verification === 'UNVERIFIED', 'Unsupported market is UNVERIFIED');
+
+  const firstGoalscorer = adjudicateFootballPrediction('FIRST_GOALSCORER', 'Haaland', finishedEvidence);
+  assert(firstGoalscorer.outcome === 'UNSUPPORTED_REQUIRES_MANUAL', 'First goalscorer market requires manual settlement');
+
+  const corners = adjudicateFootballPrediction('TOTAL_CORNERS', 'Over 10.5', finishedEvidence);
+  assert(corners.outcome === 'UNSUPPORTED_REQUIRES_MANUAL', 'Corners market requires manual settlement');
 
   // ============================================================
   // Section 6: Settlement Idempotency Guard
@@ -224,5 +264,11 @@ export function runPhase5UnitTests(): { passed: boolean; count: number; failures
   assert(!approvedOutcomes.includes('PENDING'), 'PENDING cannot be submitted as settlement outcome');
 
   return { passed: failures.length === 0, count, failures };
+}
+
+if (process.argv[1]?.replace(/\\/g, '/').endsWith('phase5-telegram-settler.test.ts')) {
+  const r = runPhase5UnitTests();
+  console.log(`\nPhase 5 Unit Tests: ${r.count - r.failures.length}/${r.count} passed.`);
+  process.exit(r.passed ? 0 : 1);
 }
 

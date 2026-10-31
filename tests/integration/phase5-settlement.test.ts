@@ -32,6 +32,8 @@ import {
   toggleNotifications,
   verifyWebhookSecret,
   enqueueNotification,
+  generateCallbackNonce,
+  verifyCallbackNonce,
 } from '../../src/core/telegram-bot.ts';
 import { settlePrediction } from '../../src/core/predictions.ts';
 import { adjudicateFootballPrediction } from '../../src/core/settlement.ts';
@@ -416,6 +418,83 @@ export async function runPhase5IntegrationTests(): Promise<{ passed: boolean; co
   assert(verifyWebhookSecret(undefined) === false, 'Missing webhook header rejected');
 
   // ============================================================
+  // 16. Telegram Callback Security & Nonce Replay Prevention
+  // ============================================================
+  console.log('\n  [Section 16: Telegram Callback Security & Replay Prevention]');
+
+  // Create a fresh prediction for callback test
+  const cbPredRes = await query<{ id: string }>(
+    `INSERT INTO predictions (user_id, event_id, analyst_id, market, selection, outcome, verification) VALUES ($1, $2, $3, 'TOTAL_GOALS', 'Over 1.5', 'PENDING', 'UNVERIFIED') RETURNING id;`,
+    [userId1, settleEventId, analystId]
+  );
+  const cbPredId = cbPredRes.rows[0].id;
+
+  // Generate valid callback nonce for user 1's chat
+  const validNonce = generateCallbackNonce({
+    predictionId: cbPredId,
+    outcome: 'WON',
+    chatId: chatId1,
+  });
+
+  // A. Cross-Chat Authorization: Attempt settlement using chatId2 (attacker's chat)
+  const crossChatParsed = verifyCallbackNonce(validNonce, chatId2);
+  assert(crossChatParsed === null, 'Nonce rejected when presented by different chat ID');
+
+  // Verify DB query in webhook denies cross-user settlement
+  const crossUserCheck = await query(
+    'SELECT p.user_id FROM predictions p JOIN bot_links bl ON bl.user_id = p.user_id WHERE p.id = $1 AND bl.telegram_chat_id = $2;',
+    [cbPredId, chatId2]
+  );
+  assert(crossUserCheck.rows.length === 0, 'Database ownership check denies cross-user telegram callback');
+
+  // B. Expired Nonce: Manually forged with past timestamp
+  const expiredParts = validNonce.split(':');
+  expiredParts[4] = String(Date.now() - 25 * 60 * 1000);
+  assert(verifyCallbackNonce(expiredParts.join(':'), chatId1) === null, 'Expired callback nonce rejected');
+
+  // C. Tampered Signature
+  const tamperedParts = validNonce.split(':');
+  tamperedParts[5] = 'deadbeefdeadbeef';
+  assert(verifyCallbackNonce(tamperedParts.join(':'), chatId1) === null, 'Tampered HMAC signature rejected');
+
+  // D. First Execution: Authorized settlement succeeds
+  const authorizedParsed = verifyCallbackNonce(validNonce, chatId1);
+  assert(authorizedParsed !== null, 'Authorized nonce parsed successfully');
+  const firstSettle = await settlePrediction({
+    userId: userId1,
+    predictionId: cbPredId,
+    newOutcome: 'WON',
+    source: 'MANUAL_USER',
+    verification: 'SELF_REPORTED',
+    evidenceJson: { source: 'telegram_callback', chatId: chatId1 },
+  });
+  assert(firstSettle.outcome === 'WON', 'First callback execution settles prediction to WON');
+
+  // E. Replay Prevention: Replaying the exact same callback nonce
+  let replayError: string | null = null;
+  try {
+    await settlePrediction({
+      userId: userId1,
+      predictionId: cbPredId,
+      newOutcome: 'WON',
+      source: 'MANUAL_USER',
+      verification: 'SELF_REPORTED',
+      evidenceJson: { source: 'telegram_callback_replay', chatId: chatId1 },
+    });
+  } catch (err: unknown) {
+    replayError = (err as Error).message;
+  }
+  assert(replayError !== null, 'Replayed callback rejected (cannot transition already-settled prediction)');
+  assert(replayError?.includes('already resolved') ?? false, 'Replay error confirms duplicate transition prevention');
+
+  // Verify outcome events only recorded 1 transition, not 2
+  const cbAuditCount = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM outcome_events WHERE prediction_id = $1;`,
+    [cbPredId]
+  );
+  assert(Number(cbAuditCount.rows[0].count) === 1, 'Exactly one audit event recorded (no duplicate transition from replay)');
+
+  // ============================================================
   // Cleanup
   // ============================================================
   await query(`DELETE FROM notification_queue WHERE user_id = $1 OR user_id = $2;`, [userId1, userId2]);
@@ -433,5 +512,17 @@ export async function runPhase5IntegrationTests(): Promise<{ passed: boolean; co
   else delete process.env.TELEGRAM_WEBHOOK_SECRET;
 
   return { passed: failures.length === 0, count, failures };
+}
+
+if (process.argv[1]?.replace(/\\/g, '/').endsWith('phase5-settlement.test.ts')) {
+  runPhase5IntegrationTests()
+    .then(r => {
+      console.log(`\nPhase 5 Integration Tests: ${r.count - r.failures.length}/${r.count} passed.`);
+      process.exit(r.passed ? 0 : 1);
+    })
+    .catch(err => {
+      console.error(err);
+      process.exit(1);
+    });
 }
 

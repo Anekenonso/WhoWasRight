@@ -7,7 +7,7 @@
  * 3. Daily reset behavior.
  */
 
-import { isWithinFreePlanWindow, FootballRateLimiter } from '../../src/core/football-cache.ts';
+import { isWithinFreePlanWindow, FootballRateLimiter, getSportRateLimiter } from '../../src/core/football-cache.ts';
 
 export function runFootballCacheUnitTests(): { passed: boolean; count: number; failures: string[] } {
   const failures: string[] = [];
@@ -60,6 +60,35 @@ export function runFootballCacheUnitTests(): { passed: boolean; count: number; f
   const usage = limiter.getUsage();
   assert(usage.used === 95, 'Usage used === 95');
   assert(usage.remaining === 5, 'Usage remaining === 5');
+
+  // 4. API-Sports Quota Isolation Across Sports
+  console.log('\n  [Section 4: Multi-Sport Quota Isolation]');
+  const fbLimiter = getSportRateLimiter('FOOTBALL');
+  const bbLimiter = getSportRateLimiter('BASKETBALL');
+  fbLimiter.resetForTesting();
+  bbLimiter.resetForTesting();
+
+  assert(fbLimiter.getSport() === 'FOOTBALL', 'Football limiter sport identifier is FOOTBALL');
+  assert(bbLimiter.getSport() === 'BASKETBALL', 'Basketball limiter sport identifier is BASKETBALL');
+
+  // Consume Football quota up to hard stop
+  for (let i = 0; i < 95; i++) {
+    fbLimiter.recordRequest();
+  }
+  assert(!fbLimiter.canMakeRequest(), 'Football reaches 95 hard ceiling and blocks requests');
+  assert(fbLimiter.getUsage().used === 95, 'Football used === 95');
+  assert(fbLimiter.getUsage().remaining === 5, 'Football remaining === 5');
+
+  // Verify Basketball quota is completely unaffected
+  assert(bbLimiter.canMakeRequest(), 'Basketball quota is unaffected by Football exhaustion');
+  assert(bbLimiter.getUsage().used === 0, 'Basketball used === 0');
+  assert(bbLimiter.getUsage().remaining === 100, 'Basketball remaining === 100');
+
+  // Consume Basketball request (e.g. including simulated retry/failure)
+  bbLimiter.recordRequest(); // 1st attempt
+  bbLimiter.recordRequest(); // failed retry attempt accounted for safely
+  assert(bbLimiter.getUsage().used === 2, 'Basketball used === 2 (retries/failures accounted safely)');
+  assert(fbLimiter.getUsage().used === 95, 'Football used remains 95 after Basketball activity (Strict Quota Isolation)');
 
   return {
     passed: failures.length === 0,

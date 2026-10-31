@@ -309,7 +309,19 @@ export async function runGate3OutboxResilienceTests(): Promise<{
     rememberAndWait: async () => {
       externalCallActive = true;
       // While external call is in flight, perform queries from a completely separate client
-      const separateClient = await pool.connect();
+      let separateClient: any = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          separateClient = await pool.connect();
+          break;
+        } catch (err: any) {
+          if (attempt < 2 && (err?.code === 'ENOTFOUND' || err?.code === 'ECONNRESET' || err?.code === 'ETIMEDOUT')) {
+            await new Promise(r => setTimeout(r, 500));
+            continue;
+          }
+          throw err;
+        }
+      }
       try {
         // Query the outbox item
         const qRes = await separateClient.query<{ status: string }>(`

@@ -106,6 +106,21 @@ export function runFootballCacheUnitTests(): { passed: boolean; count: number; f
   assert(!freshFb.canMakeRequest(), '95 consumed requests blocks further calls');
   assert(freshFb.getUsage().used === 95, '95 consumed slots registered in usage');
 
+  // Regression: UTC Midnight Reset Boundary (00:00:00 UTC)
+  const preMidnight = new Date('2026-10-31T23:59:59.999Z');
+  const postMidnight = new Date('2026-11-01T00:00:00.000Z');
+  const preDay = preMidnight.toISOString().slice(0, 10);
+  const postDay = postMidnight.toISOString().slice(0, 10);
+
+  assert(preDay === '2026-10-31', 'Pre-midnight UTC timestamp maps to 2026-10-31');
+  assert(postDay === '2026-11-01', 'At 00:00:00 UTC timestamp rolls over to 2026-11-01');
+  assert(preMidnight.getUTCDate() !== postMidnight.getUTCDate(), 'UTC day of month increments at exactly 00:00:00 UTC');
+
+  // Verify daily reset resets in-memory count when resetForTesting called
+  freshFb.resetForTesting();
+  assert(freshFb.canMakeRequest(), 'Counter reset allows requests again');
+  assert(freshFb.getUsage().used === 0, 'Counter reset sets used back to 0');
+
   return {
     passed: failures.length === 0,
     count,

@@ -23,7 +23,7 @@ export interface AnalystAlias {
   created_at: string;
 }
 
-export type IntegrityState = 'VERIFIED' | 'UNAVAILABLE' | 'FAILED';
+export type IntegrityState = 'VERIFIED' | 'NOT_APPLICABLE' | 'INCOMPLETE' | 'UNAVAILABLE' | 'FAILED';
 
 export interface AnalystIntegrityStatus {
   verified: boolean;
@@ -413,20 +413,84 @@ export async function getAnalystDetail(
   `, [userId, analystId]);
 
   analyst.credibility = computeCredibility(predRes.rows, analystId);
+
+  // If no prediction history exists in PostgreSQL, integrity is NOT_APPLICABLE
+  if (predRes.rows.length === 0) {
+    analyst.integrity = {
+      verified: false,
+      status: 'NOT_APPLICABLE',
+      warning: 'No prediction history exists to verify',
+      gaps: [],
+      tampered: 0,
+    };
+    analyst.predictions = [];
+    return analyst;
+  }
+
   try {
     const report = options?.reconstructOverride
       ? await options.reconstructOverride(userId, analystId)
       : await reconstructUserHistoryFromWalrus(userId, analystId);
 
-    if (!report.success || report.sequenceGapsDetected.length > 0 || report.tamperedEventsCount > 0) {
+    // 1. Confirmed Integrity Failures (cryptographic mismatch, sequence gaps, or report.success === false)
+    if (!report.success || (report.tamperedEventsCount && report.tamperedEventsCount > 0) || (report.sequenceGapsDetected && report.sequenceGapsDetected.length > 0)) {
       analyst.integrity = {
         verified: false,
         status: 'FAILED',
         warning: report.error || 'Historical sequence gap or untrusted memory detected in Walrus record',
-        gaps: report.sequenceGapsDetected,
-        tampered: report.tamperedEventsCount,
+        gaps: report.sequenceGapsDetected || [],
+        tampered: report.tamperedEventsCount || 0,
+      };
+      analyst.predictions = predRes.rows;
+      return analyst;
+    }
+
+    // 2. Completeness Check: Reconcile operational PostgreSQL state with Walrus reconstruction
+    const reconstructed = report.reconstructedPredictions || {};
+    let missingPredictionsCount = 0;
+    let missingSettlementsCount = 0;
+    let outcomeMismatchDetected = false;
+
+    for (const p of predRes.rows) {
+      const rec = reconstructed[p.id];
+      if (!rec) {
+        missingPredictionsCount++;
+      } else {
+        // Check settlement tail record completeness
+        if (p.outcome !== 'PENDING' && rec.outcome === 'PENDING') {
+          missingSettlementsCount++;
+        } else if (p.outcome !== 'PENDING' && rec.outcome !== p.outcome) {
+          // Both are settled, but outcomes do not match -> integrity mismatch
+          outcomeMismatchDetected = true;
+        }
+      }
+    }
+
+    if (outcomeMismatchDetected) {
+      analyst.integrity = {
+        verified: false,
+        status: 'FAILED',
+        warning: 'Historical settlement outcome mismatch detected between operational state and Walrus audit trail',
+        gaps: [],
+        tampered: 1,
+      };
+    } else if (missingPredictionsCount > 0 || missingSettlementsCount > 0) {
+      const parts: string[] = [];
+      if (missingPredictionsCount > 0) {
+        parts.push(`${missingPredictionsCount} prediction(s) awaiting Walrus synchronization`);
+      }
+      if (missingSettlementsCount > 0) {
+        parts.push(`${missingSettlementsCount} settlement record(s) pending Walrus synchronization`);
+      }
+      analyst.integrity = {
+        verified: false,
+        status: 'INCOMPLETE',
+        warning: `History incomplete: ${parts.join(', ')}`,
+        gaps: [],
+        tampered: 0,
       };
     } else {
+      // 3. Complete and verified
       analyst.integrity = {
         verified: true,
         status: 'VERIFIED',

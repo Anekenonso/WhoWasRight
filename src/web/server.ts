@@ -1719,11 +1719,29 @@ function renderMobileAppHtml(): string {
         if (integ.status === 'VERIFIED') {
           if (walrusStatusEl) {
             walrusStatusEl.className = 'badge badge-verified';
-            walrusStatusEl.textContent = '✓ Confirmed on Mainnet';
+            walrusStatusEl.textContent = '✓ History Integrity Verified';
           }
           if (bannerEl && bannerTextEl) {
             bannerEl.className = 'banner banner-success';
             bannerTextEl.textContent = '✓ Cryptographic Audit Trail Verified';
+            bannerEl.classList.remove('hidden');
+          }
+        } else if (integ.status === 'NOT_APPLICABLE') {
+          if (walrusStatusEl) {
+            walrusStatusEl.className = 'badge badge-not-rated';
+            walrusStatusEl.textContent = 'No Prediction History';
+          }
+          if (bannerEl) {
+            bannerEl.classList.add('hidden');
+          }
+        } else if (integ.status === 'INCOMPLETE') {
+          if (walrusStatusEl) {
+            walrusStatusEl.className = 'badge badge-pending';
+            walrusStatusEl.textContent = '⏳ Awaiting Walrus Sync';
+          }
+          if (bannerEl && bannerTextEl) {
+            bannerEl.className = 'banner banner-warning';
+            bannerTextEl.textContent = '⚠️ ' + (integ.warning || 'History Incomplete: pending Walrus synchronization');
             bannerEl.classList.remove('hidden');
           }
         } else if (integ.status === 'UNAVAILABLE') {
@@ -1737,14 +1755,14 @@ function renderMobileAppHtml(): string {
             bannerEl.classList.remove('hidden');
           }
         } else {
-          // FAILED (tampered memory or sequence gap)
+          // FAILED (tampered memory, sequence gap, or crypto mismatch)
           if (walrusStatusEl) {
             walrusStatusEl.className = 'badge badge-lost';
             walrusStatusEl.textContent = '✗ Integrity Failure';
           }
           if (bannerEl && bannerTextEl) {
             bannerEl.className = 'banner banner-error';
-            bannerTextEl.textContent = '⚠️ ' + (integ.warning || 'Historical integrity mismatch detected in Walrus record');
+            bannerTextEl.textContent = '⚠️ ' + (integ.warning || 'Historical integrity mismatch detected');
             bannerEl.classList.remove('hidden');
           }
         }

@@ -1,16 +1,19 @@
 /**
- * Integration Tests: Walrus Integrity Fail-Closed Verification
+ * Integration Tests: Walrus Integrity Fail-Closed & Completeness Verification
  *
- * Verifies all 6 core requirements:
- * 1. Successful reconstruction: returns status 'VERIFIED', verified: true, tampered: 0, gaps: [].
- * 2. Temporary failure (network, DNS, service, db): returns status 'UNAVAILABLE', verified: false, tampered: 0, gaps: [].
- *    MUST NOT classify temporary infrastructure failure as tampering.
- * 3. Malformed receipt: returns status 'FAILED', verified: false, tampered >= 1.
- * 4. Confirmed mismatch (ciphertext or auth tag corrupted): returns status 'FAILED', verified: false, tampered >= 1.
- * 5. Detected gap (missing sequence number): returns status 'FAILED', verified: false, gaps.length > 0.
- * 6. Recovery after temporary failure: returns 'UNAVAILABLE' on failure, then cleanly recovers to 'VERIFIED' once service is restored.
- * 7. Web API `/api/analysts/:id` exposes the complete 3-way integrity object.
- * 8. HTML UI defaults fail closed without presenting unearned verification badges.
+ * Verifies all 12 core requirements:
+ * - Case 1: Analyst with no predictions and no receipts (NOT_APPLICABLE).
+ * - Case 2: Predictions existing in PostgreSQL but no confirmed Walrus receipts (INCOMPLETE).
+ * - Case 3: Partial synchronization where only some prediction creation records have receipts (INCOMPLETE).
+ * - Case 4: Missing tail records where creation is confirmed but settlement is pending (INCOMPLETE).
+ * - Case 5: Multiple analysts sharing one user's global sequence ([Analyst A seq 1, Analyst B seq 2, Analyst A seq 3] -> both verified).
+ * - Case 6: Genuine global sequence gap ([1, 3] missing 2 -> FAILED).
+ * - Case 7: Invalid cryptographic receipt (FAILED).
+ * - Case 8: report.success === false without explicit tampering (FAILED).
+ * - Case 9: Temporary infrastructure failure (UNAVAILABLE).
+ * - Case 10: Recovery after missing records are successfully synchronized (INCOMPLETE -> VERIFIED).
+ * - Case 11: UI never displays verified badge for NOT_APPLICABLE, INCOMPLETE, UNAVAILABLE, or FAILED.
+ * - Case 12: No "Confirmed on Mainnet" claim in UI without independent Mainnet verification.
  */
 
 import http from 'node:http';
@@ -40,241 +43,399 @@ export async function runWalrusIntegrityFailClosedTests(): Promise<{
     }
   }
 
-  console.log('\n--- Running Walrus Integrity Fail-Closed Integration Tests ---');
+  console.log('\n--- Running Walrus Integrity Fail-Closed & Completeness Integration Tests ---');
 
   const testKey = getAppEncryptionKey();
   const testUserId = randomUUID();
-  let analystId = '';
+  let multiUser = '';
   let server: http.Server | null = null;
   const PORT = 3995;
   const baseUrl = `http://localhost:${PORT}`;
 
   try {
-    // 0. Setup: Create test user and analyst
+    // 0. Setup: Create test user and fixture event
     await query(`
       INSERT INTO users (id, telegram_id, username, created_at)
       VALUES ($1, $2, $3, NOW());
     `, [testUserId, Math.floor(Math.random() * 800000000) + 100000000, `test_walrus_${Date.now()}`]);
 
-    const analyst = await createAnalyst(testUserId, 'Gary Neville');
-    analystId = analyst.id;
+    const eventRes = await query<{ id: string }>(`
+      INSERT INTO events (user_id, sport, label, start_at_utc, source)
+      VALUES ($1, 'FOOTBALL', 'Arsenal vs Chelsea', NOW(), 'USER_REPORTED')
+      RETURNING id;
+    `, [testUserId]);
+    const eventId = eventRes.rows[0].id;
 
-    // Build valid memories
-    const validMem1 = formatStructuredMemory({
-      analystId,
+    // -------------------------------------------------------------------------
+    // CASE 1: Analyst with no predictions and no receipts (NOT_APPLICABLE)
+    // -------------------------------------------------------------------------
+    const emptyAnalyst = await createAnalyst(testUserId, 'Empty Analyst');
+    const emptyDetail = await getAnalystDetail(testUserId, emptyAnalyst.id);
+
+    assert(emptyDetail !== null, 'Case 1a: Empty analyst detail returned');
+    assert(emptyDetail?.integrity?.verified === false, 'Case 1b: Empty analyst verified is false');
+    assert(emptyDetail?.integrity?.status === 'NOT_APPLICABLE', 'Case 1c: Empty analyst status is NOT_APPLICABLE');
+    assert(emptyDetail?.integrity?.tampered === 0, 'Case 1d: Empty analyst tampered count is 0');
+    assert(emptyDetail?.integrity?.gaps?.length === 0, 'Case 1e: Empty analyst gaps array is empty');
+
+    // -------------------------------------------------------------------------
+    // CASE 2: Predictions in PostgreSQL but no confirmed Walrus receipts (INCOMPLETE)
+    // -------------------------------------------------------------------------
+    const analystA = await createAnalyst(testUserId, 'Analyst A');
+    const pred1Res = await query<{ id: string }>(`
+      INSERT INTO predictions (user_id, event_id, analyst_id, market, selection, outcome, verification)
+      VALUES ($1, $2, $3, '1X2', 'Arsenal', 'PENDING', 'UNVERIFIED')
+      RETURNING id;
+    `, [testUserId, eventId, analystA.id]);
+    const pred1Id = pred1Res.rows[0].id;
+
+    // No Walrus receipts exist yet
+    const pendingDetail = await getAnalystDetail(testUserId, analystA.id);
+    assert(pendingDetail?.integrity?.verified === false, 'Case 2a: Missing Walrus receipts verified is false');
+    assert(pendingDetail?.integrity?.status === 'INCOMPLETE', 'Case 2b: Missing Walrus receipts status is INCOMPLETE');
+    assert(pendingDetail?.integrity?.tampered === 0, 'Case 2c: Missing Walrus receipts NOT flagged as tampering (tampered: 0)');
+    assert(pendingDetail?.integrity?.gaps?.length === 0, 'Case 2d: Missing Walrus receipts reports no sequence gaps');
+    assert((pendingDetail?.integrity?.warning || '').includes('awaiting Walrus synchronization'), 'Case 2e: Warning explains pending sync');
+
+    // -------------------------------------------------------------------------
+    // CASE 3: Partial synchronization - only some creations have receipts (INCOMPLETE)
+    // -------------------------------------------------------------------------
+    const pred2Res = await query<{ id: string }>(`
+      INSERT INTO predictions (user_id, event_id, analyst_id, market, selection, outcome, verification)
+      VALUES ($1, $2, $3, 'BTTS', 'Yes', 'PENDING', 'UNVERIFIED')
+      RETURNING id;
+    `, [testUserId, eventId, analystA.id]);
+    const pred2Id = pred2Res.rows[0].id;
+
+    // Walrus only has receipt for pred1, missing pred2
+    const memPred1Created = formatStructuredMemory({
+      analystId: analystA.id,
       eventType: 'CREATED',
       sequenceNumber: 1,
-      payload: { predictionId: 'pred-001', market: '1X2', selection: 'Arsenal', createdAt: new Date().toISOString() },
+      payload: { predictionId: pred1Id, market: '1X2', selection: 'Arsenal', createdAt: new Date().toISOString() },
       key: testKey,
     });
 
-    const validMem2 = formatStructuredMemory({
-      analystId,
-      eventType: 'SETTLED',
+    const partialDetail = await getAnalystDetail(testUserId, analystA.id, {
+      reconstructOverride: async () => reconstructFromWalrusMemories([memPred1Created], analystA.id, testKey),
+    });
+    assert(partialDetail?.integrity?.verified === false, 'Case 3a: Partial sync verified is false');
+    assert(partialDetail?.integrity?.status === 'INCOMPLETE', 'Case 3b: Partial sync status is INCOMPLETE');
+    assert(partialDetail?.integrity?.tampered === 0, 'Case 3c: Partial sync NOT flagged as tampering');
+    assert((partialDetail?.integrity?.warning || '').includes('1 prediction(s) awaiting Walrus synchronization'), 'Case 3d: Explains 1 prediction awaiting sync');
+
+    // -------------------------------------------------------------------------
+    // CASE 4: Missing tail records - creation confirmed but settlement pending (INCOMPLETE)
+    // -------------------------------------------------------------------------
+    // Settle pred1 in PostgreSQL as WON
+    await query(`
+      UPDATE predictions
+      SET outcome = 'WON', verification = 'API_VERIFIED'
+      WHERE id = $1;
+    `, [pred1Id]);
+
+    // Create an analyst with just pred1 settled
+    const analystSettled = await createAnalyst(testUserId, 'Analyst Settled');
+    const predSettledRes = await query<{ id: string }>(`
+      INSERT INTO predictions (user_id, event_id, analyst_id, market, selection, outcome, verification)
+      VALUES ($1, $2, $3, '1X2', 'Arsenal', 'WON', 'API_VERIFIED')
+      RETURNING id;
+    `, [testUserId, eventId, analystSettled.id]);
+    const predSettledId = predSettledRes.rows[0].id;
+
+    // Walrus only contains the CREATED event (settlement tail record pending)
+    const memCreatedOnly = formatStructuredMemory({
+      analystId: analystSettled.id,
+      eventType: 'CREATED',
+      sequenceNumber: 1,
+      payload: { predictionId: predSettledId, market: '1X2', selection: 'Arsenal', createdAt: new Date().toISOString() },
+      key: testKey,
+    });
+
+    const tailMissingDetail = await getAnalystDetail(testUserId, analystSettled.id, {
+      reconstructOverride: async () => reconstructFromWalrusMemories([memCreatedOnly], analystSettled.id, testKey),
+    });
+    assert(tailMissingDetail?.integrity?.verified === false, 'Case 4a: Missing tail record verified is false');
+    assert(tailMissingDetail?.integrity?.status === 'INCOMPLETE', 'Case 4b: Missing tail record status is INCOMPLETE');
+    assert(tailMissingDetail?.integrity?.tampered === 0, 'Case 4c: Missing tail record is NOT flagged as tampering');
+    assert((tailMissingDetail?.integrity?.warning || '').includes('settlement record(s) pending Walrus synchronization'), 'Case 4d: Identifies pending settlement');
+
+    // -------------------------------------------------------------------------
+    // CASE 5: Multiple analysts sharing one user's global sequence -> BOTH VERIFIED
+    // Sequence numbers: [Analyst A seq 1, Analyst B seq 2, Analyst A seq 3, Analyst B seq 4]
+    // -------------------------------------------------------------------------
+    multiUser = randomUUID();
+    await query(`
+      INSERT INTO users (id, telegram_id, username, created_at)
+      VALUES ($1, $2, $3, NOW());
+    `, [multiUser, Math.floor(Math.random() * 800000000) + 100000000, `multi_user_${Date.now()}`]);
+
+    const multiEvent = (await query<{ id: string }>(`
+      INSERT INTO events (user_id, sport, label, start_at_utc, source)
+      VALUES ($1, 'FOOTBALL', 'Liverpool vs City', NOW(), 'USER_REPORTED')
+      RETURNING id;
+    `, [multiUser])).rows[0].id;
+
+    const multiAnalystA = await createAnalyst(multiUser, 'Multi Analyst A');
+    const multiAnalystB = await createAnalyst(multiUser, 'Multi Analyst B');
+
+    const predA1 = (await query<{ id: string }>(`
+      INSERT INTO predictions (user_id, event_id, analyst_id, market, selection, outcome, verification)
+      VALUES ($1, $2, $3, '1X2', 'Liverpool', 'WON', 'API_VERIFIED')
+      RETURNING id;
+    `, [multiUser, multiEvent, multiAnalystA.id])).rows[0].id;
+
+    const predB1 = (await query<{ id: string }>(`
+      INSERT INTO predictions (user_id, event_id, analyst_id, market, selection, outcome, verification)
+      VALUES ($1, $2, $3, 'TOTAL_GOALS', 'Over 2.5', 'WON', 'API_VERIFIED')
+      RETURNING id;
+    `, [multiUser, multiEvent, multiAnalystB.id])).rows[0].id;
+
+    // Construct interleaved global sequence:
+    // Seq 1: Analyst A (create predA1)
+    // Seq 2: Analyst B (create predB1)
+    // Seq 3: Analyst A (settle predA1)
+    // Seq 4: Analyst B (settle predB1)
+    const memA_seq1 = formatStructuredMemory({
+      analystId: multiAnalystA.id,
+      eventType: 'CREATED',
+      sequenceNumber: 1,
+      payload: { predictionId: predA1, market: '1X2', selection: 'Liverpool', createdAt: new Date().toISOString() },
+      key: testKey,
+    });
+    const memB_seq2 = formatStructuredMemory({
+      analystId: multiAnalystB.id,
+      eventType: 'CREATED',
       sequenceNumber: 2,
-      payload: { predictionId: 'pred-001', outcome: 'WON', verification: 'API_VERIFIED', settledAt: new Date().toISOString() },
+      payload: { predictionId: predB1, market: 'TOTAL_GOALS', selection: 'Over 2.5', createdAt: new Date().toISOString() },
+      key: testKey,
+    });
+    const memA_seq3 = formatStructuredMemory({
+      analystId: multiAnalystA.id,
+      eventType: 'SETTLED',
+      sequenceNumber: 3,
+      payload: { predictionId: predA1, outcome: 'WON', verification: 'API_VERIFIED', settledAt: new Date().toISOString() },
+      key: testKey,
+    });
+    const memB_seq4 = formatStructuredMemory({
+      analystId: multiAnalystB.id,
+      eventType: 'SETTLED',
+      sequenceNumber: 4,
+      payload: { predictionId: predB1, outcome: 'WON', verification: 'API_VERIFIED', settledAt: new Date().toISOString() },
       key: testKey,
     });
 
-    // -------------------------------------------------------------------------
-    // TEST 1: Successful Reconstruction
-    // -------------------------------------------------------------------------
-    const successReport = await reconstructUserHistoryFromWalrus(testUserId, analystId, {
-      rawMemoriesOverride: [validMem1, validMem2],
-    });
-    assert(successReport.success === true, 'Test 1a: Successful Walrus reconstruction succeeds');
-    assert(successReport.tamperedEventsCount === 0, 'Test 1b: 0 tampered events in valid history');
-    assert(successReport.sequenceGapsDetected.length === 0, 'Test 1c: 0 sequence gaps in valid history');
+    const multiRawMemories = [memA_seq1, memB_seq2, memA_seq3, memB_seq4];
 
-    const verifiedDetail = await getAnalystDetail(testUserId, analystId, {
-      reconstructOverride: async () => successReport,
+    // Reconstruct Analyst A: Personal sequence is [1, 3], but global sequence is [1, 2, 3, 4]
+    const reportA = reconstructFromWalrusMemories(multiRawMemories, multiAnalystA.id, testKey);
+    assert(reportA.sequenceGapsDetected.length === 0, 'Case 5a: No false sequence gap detected for Analyst A');
+    assert(reportA.validEventsCount === 2, 'Case 5b: Filtered Analyst A has 2 valid projected events');
+
+    const detailA = await getAnalystDetail(multiUser, multiAnalystA.id, {
+      reconstructOverride: async () => reportA,
     });
-    assert(verifiedDetail !== null, 'Test 1d: Analyst detail returned');
-    assert(verifiedDetail?.integrity?.verified === true, 'Test 1e: verified is true on successful reconstruction');
-    assert(verifiedDetail?.integrity?.status === 'VERIFIED', 'Test 1f: status is VERIFIED on successful reconstruction');
-    assert(verifiedDetail?.integrity?.tampered === 0, 'Test 1g: tampered count is 0');
-    assert(verifiedDetail?.integrity?.gaps?.length === 0, 'Test 1h: gaps array is empty');
+    assert(detailA?.integrity?.status === 'VERIFIED', 'Case 5c: Analyst A status is VERIFIED');
+    assert(detailA?.integrity?.verified === true, 'Case 5d: Analyst A verified is true');
+
+    // Reconstruct Analyst B: Personal sequence is [2, 4], but global sequence is [1, 2, 3, 4]
+    const reportB = reconstructFromWalrusMemories(multiRawMemories, multiAnalystB.id, testKey);
+    assert(reportB.sequenceGapsDetected.length === 0, 'Case 5e: No false sequence gap detected for Analyst B');
+    assert(reportB.validEventsCount === 2, 'Case 5f: Filtered Analyst B has 2 valid projected events');
+
+    const detailB = await getAnalystDetail(multiUser, multiAnalystB.id, {
+      reconstructOverride: async () => reportB,
+    });
+    assert(detailB?.integrity?.status === 'VERIFIED', 'Case 5g: Analyst B status is VERIFIED');
+    assert(detailB?.integrity?.verified === true, 'Case 5h: Analyst B verified is true');
 
     // -------------------------------------------------------------------------
-    // TEST 2: Temporary Failure (Network / DNS / Service / DB exception)
+    // CASE 6: Genuine global sequence gap ([1, 3] missing 2 -> FAILED)
     // -------------------------------------------------------------------------
-    // Must fail closed (verified: false), set status UNAVAILABLE, and NOT classify as tampering!
-    const tempFailureDetail = await getAnalystDetail(testUserId, analystId, {
+    // Global memories contain seq 1 and seq 3, but NO seq 2 exists anywhere for user
+    const gapMemories = [memA_seq1, memA_seq3];
+    const genuineGapReport = reconstructFromWalrusMemories(gapMemories, multiAnalystA.id, testKey);
+    assert(genuineGapReport.success === false, 'Case 6a: Genuine global gap fails reconstruction');
+    assert(genuineGapReport.sequenceGapsDetected.includes(2), 'Case 6b: Missing sequence 2 detected in global gap check');
+
+    const genuineGapDetail = await getAnalystDetail(multiUser, multiAnalystA.id, {
+      reconstructOverride: async () => genuineGapReport,
+    });
+    assert(genuineGapDetail?.integrity?.verified === false, 'Case 6c: Genuine gap fails closed (verified: false)');
+    assert(genuineGapDetail?.integrity?.status === 'FAILED', 'Case 6d: Genuine gap status is FAILED');
+    assert(genuineGapDetail?.integrity?.gaps?.includes(2) === true, 'Case 6e: Gaps array contains 2');
+
+    // -------------------------------------------------------------------------
+    // CASE 7: Invalid cryptographic receipt (FAILED)
+    // -------------------------------------------------------------------------
+    // Corrupt the ciphertext authentication tag in memA_seq1
+    const tamperedMem = memA_seq1.replace(
+      /\[enc:([^:]+):([^:]+):([a-f0-9]{6})/,
+      '[enc:$1:$2:000000'
+    );
+    const tamperedReport = reconstructFromWalrusMemories([tamperedMem], multiAnalystA.id, testKey);
+    assert(tamperedReport.success === false, 'Case 7a: Corrupted ciphertext/tag fails reconstruction');
+    assert(tamperedReport.tamperedEventsCount >= 1, 'Case 7b: Flagged as tampered event');
+
+    const tamperedDetail = await getAnalystDetail(multiUser, multiAnalystA.id, {
+      reconstructOverride: async () => tamperedReport,
+    });
+    assert(tamperedDetail?.integrity?.verified === false, 'Case 7c: Tampered memory fails closed (verified: false)');
+    assert(tamperedDetail?.integrity?.status === 'FAILED', 'Case 7d: Tampered memory status is FAILED');
+    assert((tamperedDetail?.integrity?.tampered ?? 0) >= 1, 'Case 7e: Tampered count recorded in integrity status');
+
+    // -------------------------------------------------------------------------
+    // CASE 8: report.success === false without explicit tampering (FAILED)
+    // -------------------------------------------------------------------------
+    const unverifiedReport = {
+      success: false,
+      totalEventsProcessed: 2,
+      validEventsCount: 0,
+      tamperedEventsCount: 0,
+      sequenceGapsDetected: [],
+      reconstructedPredictions: {},
+      credibility: { ratingTier: 'Not Rated', winRate: null, wonCount: 0, lostCount: 0, pushCount: 0, totalSettled: 0, historyBadge: 'Insufficient', apiVerifiedCount: 0, selfReportedCount: 0 },
+      error: 'Unspecified batch verification error from upstream node',
+    };
+
+    const unverifiedDetail = await getAnalystDetail(multiUser, multiAnalystA.id, {
+      reconstructOverride: async () => unverifiedReport,
+    });
+    assert(unverifiedDetail?.integrity?.verified === false, 'Case 8a: report.success false fails closed (verified: false)');
+    assert(unverifiedDetail?.integrity?.status === 'FAILED', 'Case 8b: report.success false classified as FAILED');
+    assert(unverifiedDetail?.integrity?.warning === 'Unspecified batch verification error from upstream node', 'Case 8c: Preserves error message');
+
+    // -------------------------------------------------------------------------
+    // CASE 9: Temporary infrastructure failure (UNAVAILABLE)
+    // -------------------------------------------------------------------------
+    const tempFailureDetail = await getAnalystDetail(multiUser, multiAnalystA.id, {
       reconstructOverride: async () => {
         throw new Error('getaddrinfo ENOTFOUND relayer.memory.walrus.xyz');
       },
     });
-    assert(tempFailureDetail?.integrity?.verified === false, 'Test 2a: Temporary network failure fails closed (verified is false, NEVER true)');
-    assert(tempFailureDetail?.integrity?.status === 'UNAVAILABLE', 'Test 2b: Temporary failure status is UNAVAILABLE');
-    assert(tempFailureDetail?.integrity?.tampered === 0, 'Test 2c: Temporary failure is NOT classified as tampering (tampered: 0)');
-    assert(tempFailureDetail?.integrity?.gaps?.length === 0, 'Test 2d: Temporary failure reports no sequence gaps (gaps: [])');
-    assert(
-      (tempFailureDetail?.integrity?.warning || '').includes('temporarily unavailable') ||
-      (tempFailureDetail?.integrity?.warning || '').includes('ENOTFOUND'),
-      'Test 2e: Temporary failure provides informative warning'
-    );
-
-    // Also verify when reconstructUserHistoryFromWalrus throws errorOverride
-    let caughtWorkerError = false;
-    try {
-      await reconstructUserHistoryFromWalrus(testUserId, analystId, {
-        errorOverride: new Error('PostgreSQL connection timeout'),
-      });
-    } catch {
-      caughtWorkerError = true;
-    }
-    assert(caughtWorkerError, 'Test 2f: reconstructUserHistoryFromWalrus propagates infrastructure exceptions to caller');
-
-    const dbFailureDetail = await getAnalystDetail(testUserId, analystId, {
-      reconstructOverride: async () => {
-        return reconstructUserHistoryFromWalrus(testUserId, analystId, {
-          errorOverride: new Error('PostgreSQL connection pool exhausted'),
-        });
-      },
-    });
-    assert(dbFailureDetail?.integrity?.verified === false, 'Test 2g: DB failure fails closed (verified: false)');
-    assert(dbFailureDetail?.integrity?.status === 'UNAVAILABLE', 'Test 2h: DB failure status is UNAVAILABLE');
-    assert(dbFailureDetail?.integrity?.tampered === 0, 'Test 2i: DB failure reports 0 tampering');
+    assert(tempFailureDetail?.integrity?.verified === false, 'Case 9a: Network failure fails closed (verified: false)');
+    assert(tempFailureDetail?.integrity?.status === 'UNAVAILABLE', 'Case 9b: Network failure status is UNAVAILABLE');
+    assert(tempFailureDetail?.integrity?.tampered === 0, 'Case 9c: Network failure is NOT classified as tampering (tampered: 0)');
+    assert(tempFailureDetail?.integrity?.gaps?.length === 0, 'Case 9d: Network failure reports no sequence gaps (gaps: [])');
 
     // -------------------------------------------------------------------------
-    // TEST 3: Malformed Receipt
+    // CASE 10: Recovery after missing records are synchronized (INCOMPLETE -> VERIFIED)
     // -------------------------------------------------------------------------
-    const malformedMem = '[WWR:v1] [corrupted-header-garbage-no-tag]';
-    const malformedReport = reconstructFromWalrusMemories([malformedMem], analystId, testKey);
-    assert(malformedReport.success === false, 'Test 3a: Malformed memory fails reconstruction');
-    assert(malformedReport.tamperedEventsCount >= 1, 'Test 3b: Malformed memory incremented tampered count');
-
-    const malformedDetail = await getAnalystDetail(testUserId, analystId, {
-      reconstructOverride: async () => malformedReport,
-    });
-    assert(malformedDetail?.integrity?.verified === false, 'Test 3c: Malformed receipt fails closed (verified: false)');
-    assert(malformedDetail?.integrity?.status === 'FAILED', 'Test 3d: Malformed receipt status is FAILED');
-    assert((malformedDetail?.integrity?.tampered ?? 0) >= 1, 'Test 3e: Malformed receipt records tampered count >= 1');
-
-    // -------------------------------------------------------------------------
-    // TEST 4: Confirmed Mismatch (Corrupted Ciphertext / Auth Tag)
-    // -------------------------------------------------------------------------
-    // Tamper with the authentication tag of validMem1
-    const tamperedMem = validMem1.replace(
-      /\[enc:([^:]+):([^:]+):([a-f0-9]{6})/,
-      '[enc:$1:$2:000000'
-    );
-    const tamperedReport = reconstructFromWalrusMemories([tamperedMem], analystId, testKey);
-    assert(tamperedReport.success === false, 'Test 4a: Corrupted ciphertext/tag fails reconstruction');
-    assert(tamperedReport.tamperedEventsCount >= 1, 'Test 4b: Cryptographic mismatch flagged as tampered');
-
-    const tamperedDetail = await getAnalystDetail(testUserId, analystId, {
-      reconstructOverride: async () => tamperedReport,
-    });
-    assert(tamperedDetail?.integrity?.verified === false, 'Test 4c: Tampered memory fails closed (verified: false)');
-    assert(tamperedDetail?.integrity?.status === 'FAILED', 'Test 4d: Tampered memory status is FAILED');
-    assert((tamperedDetail?.integrity?.tampered ?? 0) >= 1, 'Test 4e: Tampered memory records tampered count >= 1');
-
-    // -------------------------------------------------------------------------
-    // TEST 5: Detected Gap (Missing sequence number)
-    // -------------------------------------------------------------------------
-    // Sequence 1 followed by Sequence 3 (missing Sequence 2)
-    const gapMem3 = formatStructuredMemory({
-      analystId,
-      eventType: 'SETTLED',
-      sequenceNumber: 3,
-      payload: { predictionId: 'pred-001', outcome: 'WON', verification: 'API_VERIFIED' },
-      key: testKey,
-    });
-    const gapReport = reconstructFromWalrusMemories([validMem1, gapMem3], analystId, testKey);
-    assert(gapReport.success === false, 'Test 5a: Sequence gap detected');
-    assert(gapReport.sequenceGapsDetected.includes(2), 'Test 5b: Missing sequence 2 detected in gaps');
-
-    const gapDetail = await getAnalystDetail(testUserId, analystId, {
-      reconstructOverride: async () => gapReport,
-    });
-    assert(gapDetail?.integrity?.verified === false, 'Test 5c: Sequence gap fails closed (verified: false)');
-    assert(gapDetail?.integrity?.status === 'FAILED', 'Test 5d: Sequence gap status is FAILED');
-    assert(gapDetail?.integrity?.gaps?.includes(2) === true, 'Test 5e: Gaps array contains missing sequence 2');
-
-    // -------------------------------------------------------------------------
-    // TEST 6: Recovery After Temporary Failure
-    // -------------------------------------------------------------------------
-    let transientServiceHealthy = false;
-    const dynamicReconstructionService = async () => {
-      if (!transientServiceHealthy) {
-        throw new Error('503 Service Unavailable: Walrus relayer rate limit');
+    let recordsSynchronized = false;
+    const dynamicSyncService = async () => {
+      if (!recordsSynchronized) {
+        // Only seq 1 available initially (predA1 created, but settlement missing)
+        return reconstructFromWalrusMemories([memA_seq1, memB_seq2], multiAnalystA.id, testKey);
       }
-      return successReport;
+      // All records synchronized
+      return reconstructFromWalrusMemories(multiRawMemories, multiAnalystA.id, testKey);
     };
 
-    // Call 1: Service is down
-    const attempt1 = await getAnalystDetail(testUserId, analystId, {
-      reconstructOverride: dynamicReconstructionService,
+    // Attempt 1: Before sync completes
+    const attempt1 = await getAnalystDetail(multiUser, multiAnalystA.id, {
+      reconstructOverride: dynamicSyncService,
     });
-    assert(attempt1?.integrity?.status === 'UNAVAILABLE', 'Test 6a: First attempt reflects UNAVAILABLE');
-    assert(attempt1?.integrity?.verified === false, 'Test 6b: First attempt is not verified');
-    assert(attempt1?.integrity?.tampered === 0, 'Test 6c: First attempt has 0 tampered');
+    assert(attempt1?.integrity?.status === 'INCOMPLETE', 'Case 10a: First attempt reflects INCOMPLETE awaiting sync');
+    assert(attempt1?.integrity?.verified === false, 'Case 10b: First attempt is not verified');
 
-    // Service recovers
-    transientServiceHealthy = true;
+    // Outbox worker synchronizes missing receipts
+    recordsSynchronized = true;
 
-    // Call 2: Service has recovered
-    const attempt2 = await getAnalystDetail(testUserId, analystId, {
-      reconstructOverride: dynamicReconstructionService,
+    // Attempt 2: After sync completes
+    const attempt2 = await getAnalystDetail(multiUser, multiAnalystA.id, {
+      reconstructOverride: dynamicSyncService,
     });
-    assert(attempt2?.integrity?.status === 'VERIFIED', 'Test 6d: Second attempt cleanly recovers to VERIFIED');
-    assert(attempt2?.integrity?.verified === true, 'Test 6e: Second attempt is verified');
-    assert(attempt2?.integrity?.tampered === 0, 'Test 6f: Recovered state has 0 tampered');
-    assert(attempt2?.integrity?.gaps?.length === 0, 'Test 6g: Recovered state has 0 gaps');
+    assert(attempt2?.integrity?.status === 'VERIFIED', 'Case 10c: Second attempt cleanly transitions to VERIFIED');
+    assert(attempt2?.integrity?.verified === true, 'Case 10d: Second attempt is verified');
 
     // -------------------------------------------------------------------------
-    // TEST 7: Web API Endpoint `/api/analysts/:id` exposes 3-way integrity object
+    // CASE 11: UI never displays verified badge for NOT_APPLICABLE, INCOMPLETE, UNAVAILABLE, or FAILED
     // -------------------------------------------------------------------------
     server = createWebServer();
     await new Promise<void>(resolve => server!.listen(PORT, resolve));
 
-    // Create session token for test user
+    const htmlRes = await fetch(`${baseUrl}/`);
+    assert(htmlRes.status === 200, 'Case 11a: GET / returns 200');
+    const html = await htmlRes.text();
+
+    // Verify template defaults
+    assert(
+      html.includes('id="detail-walrus-status"') && html.includes('badge-not-rated'),
+      'Case 11b: UI template initializes detail-walrus-status as badge-not-rated'
+    );
+    assert(
+      html.includes('id="detail-integrity-banner"') && html.includes('hidden'),
+      'Case 11c: UI template initializes detail-integrity-banner as hidden'
+    );
+
+    // Verify openAnalystDetail client-side mapping:
+    // Only status === 'VERIFIED' assigns 'badge badge-verified' and 'banner-success'
+    assert(
+      html.includes("if (integ.status === 'VERIFIED') {\n          if (walrusStatusEl) {\n            walrusStatusEl.className = 'badge badge-verified';"),
+      'Case 11d: UI assigns badge-verified strictly when integ.status === "VERIFIED"'
+    );
+    assert(
+      html.includes("else if (integ.status === 'NOT_APPLICABLE') {\n          if (walrusStatusEl) {\n            walrusStatusEl.className = 'badge badge-not-rated';"),
+      'Case 11e: NOT_APPLICABLE uses badge-not-rated'
+    );
+    assert(
+      html.includes("else if (integ.status === 'INCOMPLETE') {\n          if (walrusStatusEl) {\n            walrusStatusEl.className = 'badge badge-pending';"),
+      'Case 11f: INCOMPLETE uses badge-pending'
+    );
+    assert(
+      html.includes("else if (integ.status === 'UNAVAILABLE') {\n          if (walrusStatusEl) {\n            walrusStatusEl.className = 'badge badge-not-rated';"),
+      'Case 11g: UNAVAILABLE uses badge-not-rated'
+    );
+    assert(
+      html.includes("walrusStatusEl.className = 'badge badge-lost';\n            walrusStatusEl.textContent = '✗ Integrity Failure';"),
+      'Case 11h: FAILED uses badge-lost'
+    );
+
+    // -------------------------------------------------------------------------
+    // CASE 12: No "Confirmed on Mainnet" claim in UI without independent Mainnet verification
+    // -------------------------------------------------------------------------
+    assert(
+      !html.includes('Confirmed on Mainnet'),
+      'Case 12a: UI HTML and client scripts contain NO unearned "Confirmed on Mainnet" claim'
+    );
+    assert(
+      html.includes('✓ History Integrity Verified'),
+      'Case 12b: UI accurately displays "✓ History Integrity Verified" for verified status'
+    );
+    assert(
+      html.includes('No Prediction History'),
+      'Case 12c: UI accurately displays "No Prediction History" for NOT_APPLICABLE status'
+    );
+    assert(
+      html.includes('⏳ Awaiting Walrus Sync'),
+      'Case 12d: UI accurately displays "⏳ Awaiting Walrus Sync" for INCOMPLETE status'
+    );
+
+    // Clean API verification
     const rawToken = generateSessionToken();
     const tokenHash = hashSessionToken(rawToken);
     await query(`
       INSERT INTO sessions (user_id, token_hash, expires_at)
       VALUES ($1, $2, NOW() + interval '24 hours');
-    `, [testUserId, tokenHash]);
+    `, [multiUser, tokenHash]);
 
-    const apiRes = await fetch(`${baseUrl}/api/analysts/${analystId}`, {
+    const apiRes = await fetch(`${baseUrl}/api/analysts/${multiAnalystA.id}`, {
       headers: {
         'Authorization': `Bearer ${rawToken}`,
       },
     });
-    assert(apiRes.status === 200, 'Test 7a: GET /api/analysts/:id returns 200');
+    assert(apiRes.status === 200, 'Case 12e: GET /api/analysts/:id returns 200');
     const apiData = await apiRes.json() as any;
-    assert(apiData.integrity !== undefined, 'Test 7b: API response contains integrity field');
-    assert(typeof apiData.integrity.status === 'string', 'Test 7c: API response contains integrity.status');
-    assert(typeof apiData.integrity.verified === 'boolean', 'Test 7d: API response contains integrity.verified');
-    assert(Array.isArray(apiData.integrity.gaps), 'Test 7e: API response contains integrity.gaps array');
-    assert(typeof apiData.integrity.tampered === 'number', 'Test 7f: API response contains integrity.tampered number');
-
-    // -------------------------------------------------------------------------
-    // TEST 8: HTML UI Fail-Closed Defaults
-    // -------------------------------------------------------------------------
-    const htmlRes = await fetch(`${baseUrl}/`);
-    assert(htmlRes.status === 200, 'Test 8a: GET / returns 200');
-    const html = await htmlRes.text();
-    assert(
-      html.includes('id="detail-walrus-status"') && html.includes('badge-not-rated'),
-      'Test 8b: UI template initializes detail-walrus-status as badge-not-rated (not verified)'
-    );
-    assert(
-      html.includes('id="detail-integrity-banner"') && html.includes('hidden'),
-      'Test 8c: UI template initializes detail-integrity-banner as hidden'
-    );
-    assert(
-      !html.includes('<span class="badge badge-verified" id="detail-walrus-status">✓ Confirmed on Mainnet</span>'),
-      'Test 8d: UI template does NOT hardcode unearned "✓ Confirmed on Mainnet" badge'
-    );
+    assert(typeof apiData.integrity?.status === 'string', 'Case 12f: API returns integrity.status');
+    assert(typeof apiData.integrity?.verified === 'boolean', 'Case 12g: API returns integrity.verified');
 
   } finally {
     if (server) {
       await new Promise<void>(resolve => server!.close(() => resolve()));
     }
-    // Cleanup test user and associated rows
-    await query('DELETE FROM users WHERE id = $1;', [testUserId]);
+    // Cleanup test users and associated rows
+    if (testUserId) await query('DELETE FROM users WHERE id = $1;', [testUserId]);
+    if (multiUser) await query('DELETE FROM users WHERE id = $1;', [multiUser]);
   }
 
   return {

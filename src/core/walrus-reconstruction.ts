@@ -4,8 +4,8 @@
  * Implements:
  * 1. Independent reconstruction of credibility history purely from validated Walrus Memory events.
  * 2. Sequence-ordered deterministic event replay (CREATED -> SETTLED -> CORRECTED).
- * 3. Tamper detection and sequence integrity checking (fails closed if gap or auth tag mismatch).
- * 4. Comparison and verification against PostgreSQL operational state.
+ * 3. Global user-level sequence integrity checking (fails closed if gap or auth tag mismatch).
+ * 4. Analyst projection and verification against PostgreSQL operational state.
  */
 
 import { parseStructuredMemory, decryptRecord, type EncryptedPayload } from './crypto.ts';
@@ -50,10 +50,10 @@ export function reconstructFromWalrusMemories(
   targetAnalystId?: string,
   encryptionKey?: Buffer
 ): ReconstructionReport {
-  const parsedEvents: ReconstructedEvent[] = [];
+  const allParsedEvents: ReconstructedEvent[] = [];
   let tamperedCount = 0;
 
-  // 1. Parse and Decrypt each memory string
+  // 1. Parse and Decrypt each memory string across the user's entire sequence
   for (const mem of rawMemories) {
     const parsed = parseStructuredMemory(mem);
     if (!parsed) {
@@ -61,13 +61,9 @@ export function reconstructFromWalrusMemories(
       continue;
     }
 
-    if (targetAnalystId && parsed.analystId !== targetAnalystId) {
-      continue;
-    }
-
     try {
       const decrypted = decryptRecord<any>(parsed.encryptedPayload, encryptionKey);
-      parsedEvents.push({
+      allParsedEvents.push({
         sequenceNumber: parsed.sequenceNumber,
         analystId: parsed.analystId,
         eventType: parsed.eventType as any,
@@ -80,22 +76,27 @@ export function reconstructFromWalrusMemories(
     }
   }
 
-  // 2. Sort strictly by sequenceNumber
-  parsedEvents.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
+  // 2. Sort ALL parsed events strictly by global sequenceNumber
+  allParsedEvents.sort((a, b) => a.sequenceNumber - b.sequenceNumber);
 
-  // 3. Check sequence integrity
+  // 3. Global Sequence Continuity Check (across all events belonging to user BEFORE analyst filtering)
   const sequenceGaps: number[] = [];
-  for (let i = 0; i < parsedEvents.length; i++) {
+  for (let i = 0; i < allParsedEvents.length; i++) {
     const expected = i + 1;
-    if (parsedEvents[i].sequenceNumber !== expected) {
+    if (allParsedEvents[i].sequenceNumber !== expected) {
       sequenceGaps.push(expected);
     }
   }
 
-  // 4. Deterministic State Machine Replay
+  // 4. Project/Filter to targetAnalystId (if specified)
+  const targetEvents = targetAnalystId
+    ? allParsedEvents.filter(ev => ev.analystId === targetAnalystId)
+    : allParsedEvents;
+
+  // 5. Deterministic State Machine Replay for target analyst
   const predictions: Record<string, ReplayPredictionState> = {};
 
-  for (const ev of parsedEvents) {
+  for (const ev of targetEvents) {
     const p = ev.payload;
     if (ev.eventType === 'CREATED') {
       predictions[p.predictionId] = {
@@ -122,7 +123,7 @@ export function reconstructFromWalrusMemories(
     }
   }
 
-  // 5. Compute Credibility from Reconstructed State
+  // 6. Compute Credibility from Reconstructed State
   const outcomeItems = Object.values(predictions).map(p => ({
     outcome: p.outcome,
     verification: p.verification,
@@ -135,7 +136,7 @@ export function reconstructFromWalrusMemories(
   return {
     success,
     totalEventsProcessed: rawMemories.length,
-    validEventsCount: parsedEvents.length,
+    validEventsCount: targetEvents.length,
     tamperedEventsCount: tamperedCount,
     sequenceGapsDetected: sequenceGaps,
     reconstructedPredictions: predictions,

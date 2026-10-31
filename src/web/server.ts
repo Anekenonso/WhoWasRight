@@ -1279,12 +1279,12 @@ function renderMobileAppHtml(): string {
         <!-- Walrus Decentralized Memory Sync Status -->
         <div style="padding: 10px 0; border-top: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
           <span style="color: var(--muted);">Walrus Memory:</span>
-          <span class="badge badge-verified" id="detail-walrus-status">✓ Confirmed on Mainnet</span>
+          <span class="badge badge-not-rated" id="detail-walrus-status">⏳ Checking...</span>
         </div>
 
         <!-- Historical Integrity Banner -->
-        <div id="detail-integrity-banner" class="banner banner-success" style="margin-top: 10px; margin-bottom: 0;">
-          <span id="detail-integrity-text">✓ Cryptographic Audit Trail Verified</span>
+        <div id="detail-integrity-banner" class="banner banner-warning hidden" style="margin-top: 10px; margin-bottom: 0;">
+          <span id="detail-integrity-text">Checking verification status...</span>
         </div>
       </div>
 
@@ -1710,13 +1710,52 @@ function renderMobileAppHtml(): string {
         document.getElementById('detail-count-api').textContent = cred.apiVerifiedCount || 0;
         document.getElementById('detail-count-self').textContent = cred.selfReportedCount || 0;
 
+        // Dynamic Walrus Integrity UI Update (Fail-Closed)
+        const integ = a.integrity || { verified: false, status: 'UNAVAILABLE' };
+        const walrusStatusEl = document.getElementById('detail-walrus-status');
+        const bannerEl = document.getElementById('detail-integrity-banner');
+        const bannerTextEl = document.getElementById('detail-integrity-text');
+
+        if (integ.status === 'VERIFIED') {
+          if (walrusStatusEl) {
+            walrusStatusEl.className = 'badge badge-verified';
+            walrusStatusEl.textContent = '✓ Confirmed on Mainnet';
+          }
+          if (bannerEl && bannerTextEl) {
+            bannerEl.className = 'banner banner-success';
+            bannerTextEl.textContent = '✓ Cryptographic Audit Trail Verified';
+            bannerEl.classList.remove('hidden');
+          }
+        } else if (integ.status === 'UNAVAILABLE') {
+          if (walrusStatusEl) {
+            walrusStatusEl.className = 'badge badge-not-rated';
+            walrusStatusEl.textContent = '⏳ Verification Unavailable';
+          }
+          if (bannerEl && bannerTextEl) {
+            bannerEl.className = 'banner banner-warning';
+            bannerTextEl.textContent = '⚠️ ' + (integ.warning || 'Walrus verification service temporarily unavailable');
+            bannerEl.classList.remove('hidden');
+          }
+        } else {
+          // FAILED (tampered memory or sequence gap)
+          if (walrusStatusEl) {
+            walrusStatusEl.className = 'badge badge-lost';
+            walrusStatusEl.textContent = '✗ Integrity Failure';
+          }
+          if (bannerEl && bannerTextEl) {
+            bannerEl.className = 'banner banner-error';
+            bannerTextEl.textContent = '⚠️ ' + (integ.warning || 'Historical integrity mismatch detected in Walrus record');
+            bannerEl.classList.remove('hidden');
+          }
+        }
+
         // Render predictions for this analyst
         const predsContainer = document.getElementById('detail-predictions-list');
         const preds = a.predictions || [];
         if (preds.length === 0) {
           predsContainer.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">No predictions logged for this analyst.</div>';
         } else {
-          predsContainer.innerHTML = preds.map(p => {
+        predsContainer.innerHTML = preds.map(p => {
             const outClass = p.outcome === 'WON' ? 'badge-won' : p.outcome === 'LOST' ? 'badge-lost' : 'badge-pending';
             return '<div style="padding: 10px 0; border-bottom: 1px solid var(--border);">' +
               '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">' +
@@ -1729,6 +1768,18 @@ function renderMobileAppHtml(): string {
         }
       } catch (err) {
         console.error('Failed to load analyst detail', err);
+        const errWalrusEl = document.getElementById('detail-walrus-status');
+        const errBannerEl = document.getElementById('detail-integrity-banner');
+        const errBannerTextEl = document.getElementById('detail-integrity-text');
+        if (errWalrusEl) {
+          errWalrusEl.className = 'badge badge-not-rated';
+          errWalrusEl.textContent = '⏳ Verification Unavailable';
+        }
+        if (errBannerEl && errBannerTextEl) {
+          errBannerEl.className = 'banner banner-warning';
+          errBannerTextEl.textContent = '⚠️ Walrus verification service temporarily unavailable';
+          errBannerEl.classList.remove('hidden');
+        }
       }
     }
 

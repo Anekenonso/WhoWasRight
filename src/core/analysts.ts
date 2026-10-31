@@ -23,8 +23,11 @@ export interface AnalystAlias {
   created_at: string;
 }
 
+export type IntegrityState = 'VERIFIED' | 'UNAVAILABLE' | 'FAILED';
+
 export interface AnalystIntegrityStatus {
   verified: boolean;
+  status: IntegrityState;
   warning?: string;
   gaps: number[];
   tampered: number;
@@ -346,7 +349,13 @@ export async function listAnalysts(userId: string): Promise<AnalystRecord[]> {
 /**
  * Retrieves detailed profile for an analyst including merged profiles
  */
-export async function getAnalystDetail(userId: string, analystId: string): Promise<AnalystRecord | null> {
+export async function getAnalystDetail(
+  userId: string,
+  analystId: string,
+  options?: {
+    reconstructOverride?: (userId: string, analystId: string) => Promise<any>;
+  }
+): Promise<AnalystRecord | null> {
   const aRes = await query<AnalystRecord>(`
     SELECT id, user_id, name, merged_into_id, created_at, updated_at
     FROM analysts
@@ -405,19 +414,34 @@ export async function getAnalystDetail(userId: string, analystId: string): Promi
 
   analyst.credibility = computeCredibility(predRes.rows, analystId);
   try {
-    const report = await reconstructUserHistoryFromWalrus(userId, analystId);
+    const report = options?.reconstructOverride
+      ? await options.reconstructOverride(userId, analystId)
+      : await reconstructUserHistoryFromWalrus(userId, analystId);
+
     if (!report.success || report.sequenceGapsDetected.length > 0 || report.tamperedEventsCount > 0) {
       analyst.integrity = {
         verified: false,
-        warning: 'Historical sequence gap or untrusted memory detected in Walrus record',
+        status: 'FAILED',
+        warning: report.error || 'Historical sequence gap or untrusted memory detected in Walrus record',
         gaps: report.sequenceGapsDetected,
         tampered: report.tamperedEventsCount,
       };
     } else {
-      analyst.integrity = { verified: true, gaps: [], tampered: 0 };
+      analyst.integrity = {
+        verified: true,
+        status: 'VERIFIED',
+        gaps: [],
+        tampered: 0,
+      };
     }
-  } catch {
-    analyst.integrity = { verified: true, gaps: [], tampered: 0 };
+  } catch (err: any) {
+    analyst.integrity = {
+      verified: false,
+      status: 'UNAVAILABLE',
+      warning: err?.message ? `Walrus verification temporarily unavailable: ${err.message}` : 'Walrus verification temporarily unavailable',
+      gaps: [],
+      tampered: 0,
+    };
   }
   analyst.predictions = predRes.rows;
   return analyst;

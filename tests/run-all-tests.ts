@@ -29,6 +29,7 @@ import { runGate3OutboxResilienceTests } from './integration/gate3-outbox-resili
 import { runPhase5UnitTests } from './unit/phase5-telegram-settler.test.ts';
 import { runPhase5IntegrationTests } from './integration/phase5-settlement.test.ts';
 import { runAuthHardeningCorrectionsTests } from './integration/auth-hardening-corrections.test.ts';
+import { runWalrusIntegrityFailClosedTests } from './integration/walrus-integrity-fail-closed.test.ts';
 import { closeDbPool } from '../src/core/db.ts';
 
 async function main() {
@@ -88,6 +89,7 @@ async function main() {
   let gate3Count = 0;
   let p5IntCount = 0;
   let authHardeningCount = 0;
+  let walrusIntegrityCount = 0;
 
   async function runWithTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
     try {
@@ -177,6 +179,17 @@ async function main() {
   } catch (err: unknown) {
     totalFailures.push(`Auth Hardening integration exception: ${(err as Error).message}`);
     console.error('Fatal Auth Hardening Integration Error:', err);
+  }
+
+  // 16. Walrus Integrity Fail-Closed Integration Tests
+  try {
+    const walrusIntRes = await runWithTransientRetry(() => runWalrusIntegrityFailClosedTests());
+    walrusIntegrityCount = walrusIntRes.count;
+    totalTests += walrusIntRes.count;
+    totalFailures.push(...walrusIntRes.failures);
+  } catch (err: unknown) {
+    totalFailures.push(`Walrus Integrity Fail-Closed integration exception: ${(err as Error).message}`);
+    console.error('Fatal Walrus Integrity Fail-Closed Integration Error:', err);
   } finally {
     await closeDbPool();
   }
@@ -201,6 +214,7 @@ async function main() {
   console.log(`13. Gate 3 Outbox Resilience Tests:          ${gate3Count} tests`);
   console.log(`14. Phase 5 Integration Tests (Settlement):  ${p5IntCount} tests`);
   console.log(`15. Auth Hardening & Demo Isolation Tests:    ${authHardeningCount} tests`);
+  console.log(`16. Walrus Integrity Fail-Closed Tests:       ${walrusIntegrityCount} tests`);
   console.log('------------------------------------------------------------');
   console.log(`Total Invariants & Assertions Tested: ${totalTests}`);
   console.log(`Total Passed:                         ${passedCount}`);

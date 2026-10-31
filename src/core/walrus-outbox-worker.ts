@@ -231,18 +231,32 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
  */
 export async function reconstructUserHistoryFromWalrus(
   userId: string,
-  targetAnalystId?: string
+  targetAnalystId?: string,
+  options?: {
+    rawMemoriesOverride?: string[];
+    errorOverride?: Error;
+  }
 ): Promise<ReconstructionReport> {
-  // Query all confirmed memory payloads for the user in sequence
-  const res = await query<{ payload: string }>(`
-    SELECT o.payload
-    FROM memory_receipts r
-    JOIN memory_outbox o ON o.user_id = r.user_id AND o.walrus_job_id = r.job_id
-    WHERE r.user_id = $1
-    ORDER BY r.sequence_number ASC;
-  `, [userId]);
+  if (options?.errorOverride) {
+    throw options.errorOverride;
+  }
 
-  const rawMemories = res.rows.map(r => r.payload);
+  let rawMemories: string[];
+  if (options?.rawMemoriesOverride) {
+    rawMemories = options.rawMemoriesOverride;
+  } else {
+    // Query all confirmed memory payloads for the user in sequence
+    const res = await query<{ payload: string }>(`
+      SELECT o.payload
+      FROM memory_receipts r
+      JOIN memory_outbox o ON o.user_id = r.user_id AND o.walrus_job_id = r.job_id
+      WHERE r.user_id = $1
+      ORDER BY r.sequence_number ASC;
+    `, [userId]);
+
+    rawMemories = res.rows.map(r => r.payload);
+  }
+
   const encryptionKey = getAppEncryptionKey();
 
   return reconstructFromWalrusMemories(rawMemories, targetAnalystId, encryptionKey);

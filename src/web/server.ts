@@ -834,28 +834,12 @@ export function renderMobileAppHtml(): string {
     }
 
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background-color: var(--bg);
       color: var(--navy);
       line-height: 1.5;
       padding-bottom: 74px; /* Space for bottom nav */
       min-height: 100vh;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      text-rendering: optimizeLegibility;
-    }
-
-    h1, h2, h3, .card-title {
-      letter-spacing: -0.02em;
-      text-wrap: balance;
-    }
-
-    p, .label {
-      text-wrap: pretty;
-    }
-
-    .tabular-nums {
-      font-variant-numeric: tabular-nums;
     }
 
     /* Top App Bar */
@@ -1147,7 +1131,7 @@ export function renderMobileAppHtml(): string {
       ${LOGO_HERO_SVG}
       <h1 style="font-size: 20px; font-weight: 700; color: var(--navy); margin-bottom: 6px;">WhoWasRight</h1>
       <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5;">
-        A private record of sports predictions with verifiable proof of who called it right.
+        Private sports prediction journal with cryptographically immutable credibility tracking.
       </p>
 
       <div id="auth-error-banner" class="banner banner-error hidden" style="text-align: left; margin-bottom: 16px;">
@@ -1173,7 +1157,7 @@ export function renderMobileAppHtml(): string {
           Log in with a demo account
         </button>
         <div style="font-size: 11px; color: var(--muted); margin-top: 6px;">
-          Explore an interactive demo pre-loaded with active tipsters and past results.
+          Launches an isolated sandbox pre-seeded with sample tipsters for evaluation.
         </div>
       </div>
     </div>
@@ -1258,7 +1242,7 @@ export function renderMobileAppHtml(): string {
       <div class="paste-assistant">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
           <span style="font-size: 13px; font-weight: 600; color: var(--blue);">📋 Quick Paste Assistant</span>
-          <span style="font-size: 11px; color: var(--muted);">Smart auto-fill</span>
+          <span style="font-size: 11px; color: var(--muted);">Deterministic / Zero AI</span>
         </div>
         <div class="form-group" style="margin-bottom: 8px;">
           <input type="text" id="paste-input" class="input" placeholder="Paste tip (e.g. Arsenal vs Chelsea - Over 2.5 goals)" style="font-size: 13px;">
@@ -1497,9 +1481,9 @@ export function renderMobileAppHtml(): string {
       <div class="card">
         <div class="card-title">Storage & Privacy</div>
         <div style="font-size: 12px; color: var(--slate); line-height: 1.6;">
-          <p style="margin-bottom: 8px;"><strong>Permanent Ledger:</strong> Historical prediction and settlement records are permanently synchronized to decentralized Walrus storage so records cannot be edited or deleted after a loss.</p>
-          <p style="margin-bottom: 8px;"><strong>Private by Design:</strong> Event payloads are secured with AES-256-GCM encryption before storage, keeping your personal journal strictly confidential.</p>
-          <p style="margin-bottom: 8px;"><strong>On-Chain Timestamps:</strong> Sui Mainnet gRPC ledger verification confirms authentic kickoff and settlement timing.</p>
+          <p style="margin-bottom: 8px;"><strong>Walrus Memory:</strong> Historical prediction and settlement events are synchronized to decentralized Walrus storage for independent reconstruction.</p>
+          <p style="margin-bottom: 8px;"><strong>Application Encryption:</strong> Historical event records are encrypted application-side using AES-256-GCM with server-managed keys before transmission.</p>
+          <p style="margin-bottom: 8px;"><strong>Tatum Sui Gateway:</strong> Sui Mainnet gRPC account-object queries verify ledger connectivity.</p>
           <p style="font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px;">
             Note: Due to the immutable nature of decentralized storage, encrypted records committed to Walrus cannot be modified or deleted.
           </p>

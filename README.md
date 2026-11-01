@@ -1,6 +1,6 @@
 # WhoWasRight
 
-**A private sports prediction journal with verifiable proof of who called it right.**
+**Private sports prediction journal with cryptographically immutable credibility tracking.**
 
 WhoWasRight allows sports bettors and enthusiasts to track tipsters and personal predictions with complete accountability. By separating API-verified outcomes from self-reported claims, enforcing pre-kickoff logging immutability, and anchoring proof on decentralized storage, WhoWasRight eliminates hindsight bias and faked betting records.
 
@@ -40,7 +40,7 @@ Judges, evaluators, and visitors can immediately test the live application witho
 - **Analyst Alias & Merge System:**
   - Track tipsters across multiple platforms (Telegram handles, Twitter/X).
   - Merge duplicate analyst records with full auditability and reversible unmerges.
-- **Quick Paste Assistant:** Rapidly extracts event, market, pick, and kickoff time from unstructured betting copy or social posts.
+- **AI / Text Paste Assistant:** Rapidly extracts event, market, pick, and kickoff time from unstructured betting copy or social posts.
 - **Telegram Bot & Result Alerts:** Connects via Telegram Login to deliver automated result notifications and settlement reminders.
 - **Decentralized Storage Proofs:** Anchors historical credibility and prediction records to Walrus Mainnet storage blobs.
 

@@ -626,7 +626,7 @@ export function createWebServer(): http.Server {
         };
         try {
           const recovered = await recoverStaleInFlightOutbox(5);
-          const batchSize = Math.max(1, Math.min(Number(process.env.WALRUS_CRON_BATCH_SIZE) || 5, 10));
+          const batchSize = Math.max(1, Math.min(Number(process.env.WALRUS_CRON_BATCH_SIZE) || 2, 5));
           const outboxRes = await processMemoryOutbox({ batchSize });
           walrusOutboxResult = {
             processed: outboxRes.processed,

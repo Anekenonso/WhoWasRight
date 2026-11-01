@@ -61,7 +61,7 @@ export async function runMigrations(dbUrl?: string): Promise<{ success: boolean;
         await client.query('BEGIN');
         try {
           await client.query(sql);
-          await client.query('INSERT INTO _migrations (name) VALUES ($1)', [file]);
+          await client.query('INSERT INTO _migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [file]);
           await client.query('COMMIT');
           applied.push(file);
           console.log(`[PASS] Applied ${file}`);

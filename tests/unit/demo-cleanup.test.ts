@@ -300,6 +300,17 @@ export async function runDemoCleanupUnitTests(): Promise<{ passed: boolean; coun
   assert(!clientScript.includes("openAnalystDetail('' +"), 'Emitted script contains properly escaped quotes for openAnalystDetail');
   assert(!clientScript.includes("openMergeModal('' +"), 'Emitted script contains properly escaped quotes for openMergeModal');
 
+  // 4. Verify landing page presentation: compact secondary demo, primary Telegram login
+  assert(!clientHtml.includes('Judge & Evaluator Demo'), 'Landing page does not contain "Judge & Evaluator Demo" title');
+  assert(!clientHtml.includes('60-Min Sandbox'), 'Landing page does not contain "60-Min Sandbox" promotional badge');
+  assert(clientHtml.includes('Log in with a demo account'), 'Landing page contains "Log in with a demo account"');
+  assert(clientHtml.includes('id="btn-demo-login"'), 'Demo button preserves #btn-demo-login identifier');
+  assert(clientHtml.includes('Sign In with Telegram'), 'Landing page contains primary "Sign In with Telegram"');
+  
+  const telegramPos = clientHtml.indexOf('id="telegram-login-container"');
+  const demoPos = clientHtml.indexOf('id="btn-demo-login"');
+  assert(telegramPos > 0 && demoPos > telegramPos, 'Telegram login appears before demo login in DOM order');
+
   return { passed: failures.length === 0, count, failures };
 }
 

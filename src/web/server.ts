@@ -1012,22 +1012,8 @@ export function renderMobileAppHtml(): string {
         <span id="auth-error-text">Authentication required</span>
       </div>
 
-      <!-- Judge & Evaluator Demo Mode (Instant Sandbox) -->
-      <div style="background: var(--blue-light); border: 1px solid #BFDBFE; border-radius: var(--radius); padding: 16px; margin-bottom: 20px; text-align: left;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <span style="font-weight: 700; font-size: 14px; color: var(--blue);">⚡ Judge & Evaluator Demo</span>
-          <span class="badge badge-good">60-Min Sandbox</span>
-        </div>
-        <p style="font-size: 12px; color: var(--slate); margin-bottom: 14px; line-height: 1.5;">
-          Instant isolated session pre-populated with predictions, credibility ratings, and manual settlement verification. No Telegram required.
-        </p>
-        <button id="btn-demo-login" class="btn btn-primary" onclick="handleDemoLogin()">
-          Enter Judge Demo Mode
-        </button>
-      </div>
-
-      <!-- Telegram Login Widget Section -->
-      <div style="border-top: 1px solid var(--border); padding-top: 18px;">
+      <!-- Telegram Login Widget Section (Primary) -->
+      <div style="margin-bottom: 20px;">
         <div style="font-size: 13px; font-weight: 600; color: var(--slate); margin-bottom: 4px;">
           Sign In with Telegram
         </div>
@@ -1037,6 +1023,13 @@ export function renderMobileAppHtml(): string {
         <div id="telegram-login-container" style="display: flex; justify-content: center; min-height: 44px; align-items: center;">
           ${telegramWidgetHtml}
         </div>
+      </div>
+
+      <!-- Demo Account Login (Compact Secondary Alternative) -->
+      <div style="border-top: 1px solid var(--border); padding-top: 16px;">
+        <button id="btn-demo-login" class="btn btn-outline btn-sm" onclick="handleDemoLogin()" style="width: auto; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 8px 16px; font-size: 13px; color: var(--slate);">
+          Log in with a demo account
+        </button>
       </div>
     </div>
   </div>

@@ -567,7 +567,7 @@ export function createWebServer(): http.Server {
             try {
               await sendTelegramMessage(
                 update.message.chat.id,
-                'WhoWasRight connected! You will receive result notifications here.'
+                'WhoWasRight connected! Result notifications are currently disabled. You can enable them anytime in Settings in WhoWasRight.'
               );
             } catch (msgErr) {
               console.error('[TELEGRAM] Non-fatal welcome message send error:', msgErr);
@@ -670,7 +670,15 @@ export function createWebServer(): http.Server {
       // UI / HTML CLIENT (Mobile-First Single-Page Application)
       // -------------------------------------------------------------
       // -------------------------------------------------------------
-      if (pathname === '/' || pathname === '/index.html' || pathname === '/log' || pathname === '/analysts' || pathname === '/predictions') {
+      const predPageMatch = pathname.match(/^\/predictions\/([0-9a-fA-F-]+)$/);
+      if (
+        pathname === '/' ||
+        pathname === '/index.html' ||
+        pathname === '/log' ||
+        pathname === '/analysts' ||
+        pathname === '/predictions' ||
+        predPageMatch
+      ) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderMobileAppHtml());
         return;
@@ -1642,6 +1650,14 @@ export function renderMobileAppHtml(): string {
       if (params.get('merge') === 'true' && analystsList.length >= 2) {
         openMergeModal(analystsList[0].id, analystsList[0].name);
       }
+
+      // Deep link routing: /predictions/:predictionId
+      const predPathMatch = window.location.pathname.match(new RegExp('/predictions/([0-9a-fA-F-]+)'));
+      if (predPathMatch) {
+        const targetPredId = predPathMatch[1];
+        switchTab('predictions');
+        await loadAndHighlightPrediction(targetPredId);
+      }
     }
 
     // Initialization on page load
@@ -1984,7 +2000,7 @@ export function renderMobileAppHtml(): string {
           ? '<span class="badge badge-good" style="font-size: 10px;">✓ Walrus Synced</span>'
           : '<span class="badge badge-pending" style="font-size: 10px;">⏳ Syncing...</span>';
 
-        return '<div class="card" style="margin-bottom: 10px;">' +
+        return '<div class="card" id="prediction-card-' + p.id + '" style="margin-bottom: 10px;">' +
           '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
             '<div>' +
               '<span class="badge badge-not-rated" style="margin-right: 6px;">' + p.sport + '</span>' +
@@ -2004,6 +2020,64 @@ export function renderMobileAppHtml(): string {
           '</div>' +
         '</div>';
       }).join('');
+    }
+
+    // Deep Link Prediction Fetch & Highlight
+    async function loadAndHighlightPrediction(predId) {
+      const container = document.getElementById('predictions-list');
+      if (!container) return;
+
+      try {
+        const res = await apiFetch('/api/predictions/' + predId);
+        if (res.status === 404 || !res.ok) {
+          const banner = document.createElement('div');
+          banner.className = 'card';
+          banner.style.cssText = 'border-left: 3px solid var(--lost); margin-bottom: 12px; font-size: 13px; color: var(--navy);';
+          banner.innerHTML = '<strong>Prediction Not Found:</strong> You do not have access to this prediction or it does not exist.';
+          container.prepend(banner);
+          return;
+        }
+
+        const data = await res.json();
+        const p = data.prediction;
+        if (!p) return;
+
+        const existingCard = document.getElementById('prediction-card-' + p.id);
+        if (existingCard) {
+          existingCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          existingCard.style.outline = '2px solid var(--blue)';
+        } else {
+          const outcomeClass = p.outcome === 'WON' ? 'badge-won' :
+                               p.outcome === 'LOST' ? 'badge-lost' : 'badge-pending';
+          const kickoff = new Date(p.start_at_utc).toLocaleString('en-US', {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
+          }) + ' UTC';
+
+          const card = document.createElement('div');
+          card.id = 'prediction-card-' + p.id;
+          card.className = 'card';
+          card.style.cssText = 'margin-bottom: 12px; outline: 2px solid var(--blue);';
+          card.innerHTML =
+            '<div style="font-size: 11px; font-weight: 700; color: var(--blue); margin-bottom: 6px;">📍 LINKED PREDICTION</div>' +
+            '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
+              '<div>' +
+                '<span class="badge badge-not-rated" style="margin-right: 6px;">' + p.sport + '</span>' +
+                '<strong style="font-size: 14px;">' + p.event_label + '</strong>' +
+              '</div>' +
+              '<span class="badge ' + outcomeClass + '">' + p.outcome + '</span>' +
+            '</div>' +
+            '<div style="font-size: 13px; color: var(--navy); margin-bottom: 6px;">' +
+              '<strong>Pick:</strong> ' + p.market + ' — ' + p.selection +
+            '</div>' +
+            '<div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">' +
+              '<span>Analyst: ' + p.analyst_name + '</span>' +
+              '<span>Kickoff: ' + kickoff + '</span>' +
+            '</div>';
+          container.prepend(card);
+        }
+      } catch (err) {
+        console.error('Error fetching deep linked prediction:', err);
+      }
     }
 
     // Filter Predictions

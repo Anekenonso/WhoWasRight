@@ -30,6 +30,137 @@ export interface SettlementRunResult {
   errors: string[];
 }
 
+export const DEFAULT_SETTLEMENT_MAX_RETRIES = 3;
+
+export function getSettlementMaxRetries(): number {
+  const raw = process.env.SETTLEMENT_MAX_RETRIES;
+  const val = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(val) && val > 0 ? val : DEFAULT_SETTLEMENT_MAX_RETRIES;
+}
+
+interface FixtureJobState {
+  attempts: number;
+  lastError?: string;
+}
+
+function parseJobState(errorText: string | null | undefined): FixtureJobState {
+  if (!errorText) return { attempts: 0 };
+  try {
+    const parsed = JSON.parse(errorText);
+    if (parsed && typeof parsed.attempts === 'number') {
+      return { attempts: parsed.attempts, lastError: parsed.lastError };
+    }
+  } catch {
+    // fallback if error was stored as plain text
+  }
+  return { attempts: 1, lastError: errorText };
+}
+
+export async function recordFixtureFailure(
+  fixtureId: number,
+  errorMessage: string,
+  maxRetries = getSettlementMaxRetries()
+): Promise<{ attempts: number; reachedLimit: boolean }> {
+  const jobRes = await query<{ error: string | null; status: string }>(
+    `SELECT error, status FROM settlement_jobs WHERE api_fixture_id = $1;`,
+    [fixtureId]
+  );
+
+  const prev = parseJobState(jobRes.rows[0]?.error);
+  const attempts = prev.attempts + 1;
+  const reachedLimit = attempts >= maxRetries;
+  const newStatus = reachedLimit ? 'FAILED' : 'PENDING';
+  const stateJson = JSON.stringify({ attempts, lastError: errorMessage });
+
+  await query(
+    `INSERT INTO settlement_jobs (api_fixture_id, status, error, last_polled_at, updated_at)
+     VALUES ($1, $2, $3, NOW(), NOW())
+     ON CONFLICT (api_fixture_id) DO UPDATE
+       SET status = $2,
+           error = $3,
+           last_polled_at = NOW(),
+           updated_at = NOW();`,
+    [fixtureId, newStatus, stateJson]
+  );
+
+  return { attempts, reachedLimit };
+}
+
+export async function resetFixtureJobState(
+  fixtureId: number,
+  status: 'PENDING' | 'SETTLED' | 'PARTIAL' | 'MANUAL_ONLY' = 'PENDING'
+): Promise<void> {
+  await query(
+    `INSERT INTO settlement_jobs (api_fixture_id, status, error, last_polled_at, updated_at)
+     VALUES ($1, $2, NULL, NOW(), NOW())
+     ON CONFLICT (api_fixture_id) DO UPDATE
+       SET status = $2,
+           error = NULL,
+           last_polled_at = NOW(),
+           updated_at = NOW();`,
+    [fixtureId, status]
+  );
+}
+
+export async function fallbackToManualSettlement(
+  fixtureId: number,
+  reason: string
+): Promise<number> {
+  const predRes = await query<{
+    id: string;
+    user_id: string;
+    market: string;
+    selection: string;
+    event_label: string;
+    analyst_name: string;
+  }>(
+    `SELECT p.id, p.user_id, p.market, p.selection,
+            e.label as event_label, a.name as analyst_name
+     FROM predictions p
+     JOIN events e ON e.id = p.event_id
+     JOIN analysts a ON a.id = p.analyst_id
+     JOIN users u ON u.id = p.user_id
+     WHERE e.api_fixture_id = $1
+       AND p.outcome = 'PENDING'
+       AND e.sport = 'FOOTBALL'
+       AND u.telegram_id > 0;`,
+    [fixtureId]
+  );
+
+  let manualCount = 0;
+  for (const pred of predRes.rows) {
+    try {
+      await enqueueNotification({
+        userId: pred.user_id,
+        predictionId: pred.id,
+        notificationType: 'SETTLEMENT_MANUAL',
+        payload: {
+          eventName: pred.event_label,
+          analystName: pred.analyst_name,
+          market: pred.market,
+          selection: pred.selection,
+          reason,
+          viewUrl: `/predictions/${pred.id}`,
+        },
+      });
+      manualCount++;
+    } catch {
+      // Non-fatal notification error
+    }
+  }
+
+  await query(
+    `UPDATE settlement_jobs
+     SET status = 'FAILED',
+         manual_predictions = manual_predictions + $2,
+         updated_at = NOW()
+     WHERE api_fixture_id = $1;`,
+    [fixtureId, manualCount]
+  );
+
+  return manualCount;
+}
+
 /**
  * Verifies the CRON_SECRET in the Authorization header.
  * Returns true only if the secret matches exactly.
@@ -158,6 +289,17 @@ export async function runSettlementCycle(): Promise<SettlementRunResult> {
     // 2. Check quota before each fixture fetch
     if (!globalFootballRateLimiter.canMakeRequest()) {
       result.errors.push(`Quota exhausted before fixture ${fixtureId}`);
+      if (kickoff <= new Date()) {
+        const failure = await recordFixtureFailure(fixtureId, 'Quota exhausted before fixture fetch');
+        if (failure.reachedLimit) {
+          const count = await fallbackToManualSettlement(fixtureId, 'API quota exhausted after repeated retries');
+          result.predictionsManual += count;
+        } else {
+          result.predictionsPending++;
+        }
+      } else {
+        result.predictionsPending++;
+      }
       break;
     }
 
@@ -175,18 +317,64 @@ export async function runSettlementCycle(): Promise<SettlementRunResult> {
 
       if (rateLimited) {
         result.errors.push(`Rate limited fetching fixture ${fixtureId}`);
+        if (kickoff <= new Date()) {
+          const failure = await recordFixtureFailure(fixtureId, 'Rate limited by API provider');
+          if (failure.reachedLimit) {
+            const count = await fallbackToManualSettlement(fixtureId, 'API rate limit exhausted after repeated retries');
+            result.predictionsManual += count;
+          } else {
+            result.predictionsPending++;
+          }
+        } else {
+          result.predictionsPending++;
+        }
         break;
       }
 
       if (!fixture) {
-        result.predictionsPending++;
+        if (kickoff <= new Date()) {
+          const failure = await recordFixtureFailure(fixtureId, 'Fixture not found by API provider');
+          if (failure.reachedLimit) {
+            const count = await fallbackToManualSettlement(fixtureId, 'Fixture not found after repeated retries');
+            result.predictionsManual += count;
+          } else {
+            result.predictionsPending++;
+          }
+        } else {
+          result.predictionsPending++;
+        }
         continue;
       }
 
       // 5. Parse evidence
       const evidence = parseFixtureEvidence(fixture);
       if (!evidence) {
-        result.predictionsPending++;
+        const shortStatus = fixture.fixture?.status?.short;
+        const isIncompleteFinished = ['FT', 'AET', 'PEN'].includes(shortStatus);
+        if (isIncompleteFinished && kickoff <= new Date()) {
+          const failure = await recordFixtureFailure(fixtureId, 'Incomplete final result: goals missing');
+          if (failure.reachedLimit) {
+            const count = await fallbackToManualSettlement(fixtureId, 'Incomplete final result after repeated retries');
+            result.predictionsManual += count;
+          } else {
+            result.predictionsPending++;
+          }
+        } else {
+          result.predictionsPending++;
+        }
+        continue;
+      }
+
+      // Do not prompt for manual settlement prematurely when a fixture is POSTPONED, ABANDONED or SUSPENDED.
+      // These remain pending under the existing status contract.
+      if (['POSTPONED', 'ABANDONED', 'SUSPENDED', 'IN_PLAY'].includes(evidence.status)) {
+        await resetFixtureJobState(fixtureId, 'PENDING');
+        const pCountRes = await query<{ count: string }>(
+          `SELECT COUNT(*) as count FROM predictions p JOIN events e ON e.id = p.event_id JOIN users u ON u.id = p.user_id
+           WHERE e.api_fixture_id = $1 AND p.outcome = 'PENDING' AND e.sport = 'FOOTBALL' AND u.telegram_id > 0;`,
+          [fixtureId]
+        );
+        result.predictionsPending += Number(pCountRes.rows[0]?.count || 0);
         continue;
       }
 
@@ -257,6 +445,10 @@ export async function runSettlementCycle(): Promise<SettlementRunResult> {
           result.predictionsSettled++;
 
           // 9. Queue settlement notification (non-blocking — settlement already committed)
+          // For CANCELLED / VOID predictions, omit fabricated score
+          const isVoidOrCancelled = adj.outcome === 'VOID' || evidence.status === 'CANCELLED';
+          const score = isVoidOrCancelled ? undefined : `${evidence.homeGoals}-${evidence.awayGoals}`;
+
           try {
             await enqueueNotification({
               userId: pred.user_id,
@@ -268,7 +460,7 @@ export async function runSettlementCycle(): Promise<SettlementRunResult> {
                 market: pred.market,
                 selection: pred.selection,
                 outcome: adj.outcome,
-                score: `${evidence.homeGoals}-${evidence.awayGoals}`,
+                score,
                 reason: adj.reason,
                 viewUrl,
               },
@@ -288,11 +480,25 @@ export async function runSettlementCycle(): Promise<SettlementRunResult> {
         }
       }
 
+      await resetFixtureJobState(fixtureId, 'SETTLED');
+
       if (!fromCache) {
         result.quotaRemaining = globalFootballRateLimiter.getUsage().remaining;
       }
     } catch (err: unknown) {
-      result.errors.push(`Fixture ${fixtureId} error: ${(err as Error).message}`);
+      const errMsg = (err as Error).message;
+      result.errors.push(`Fixture ${fixtureId} error: ${errMsg}`);
+      if (kickoff <= new Date()) {
+        const failure = await recordFixtureFailure(fixtureId, errMsg);
+        if (failure.reachedLimit) {
+          const count = await fallbackToManualSettlement(fixtureId, `API error after repeated retries: ${errMsg}`);
+          result.predictionsManual += count;
+        } else {
+          result.predictionsPending++;
+        }
+      } else {
+        result.predictionsPending++;
+      }
     }
   }
 

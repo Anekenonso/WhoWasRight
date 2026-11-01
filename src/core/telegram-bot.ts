@@ -406,9 +406,30 @@ export function verifyWebhookSecret(headerValue: string | undefined): boolean {
 
 const CALLBACK_NONCE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
+const OUTCOME_CODE_MAP: Record<string, string> = {
+  WON: 'W',
+  LOST: 'L',
+  PUSH: 'P',
+};
+
+const CODE_OUTCOME_MAP: Record<string, string> = {
+  W: 'WON',
+  L: 'LOST',
+  P: 'PUSH',
+};
+
 /**
- * Generates an HMAC-signed nonce for Telegram inline button callback data.
- * Format: `settle:{predictionId}:{outcome}:{chatId}:{timestamp}:{hmac}`
+ * Generates an HMAC-signed compact nonce for Telegram inline button callback data.
+ * Telegram enforces a strict 64-byte limit on callback_data.
+ *
+ * Compact format: `s:{cleanHex32}:{outcomeCode}:{tsSec}:{hmac16}`
+ * Total length is exactly 64 bytes, strictly within Telegram's 64-byte limit.
+ *
+ * Security:
+ * - chatId is bound into the HMAC message so the nonce cannot be reused by another user or chat.
+ * - timestamp (in seconds) enforces the 15-minute expiry.
+ * - predictionId (32 hex chars) is verified against ownership upon receipt.
+ * - HMAC signature is 16 hexadecimal characters (64 bits of entropy).
  */
 export function generateCallbackNonce(params: {
   predictionId: string;
@@ -418,14 +439,21 @@ export function generateCallbackNonce(params: {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
   if (!secret) throw new Error('TELEGRAM_WEBHOOK_SECRET not configured');
   const { predictionId, outcome, chatId } = params;
-  const timestamp = Date.now();
-  const message = `${predictionId}:${outcome}:${chatId}:${timestamp}`;
+
+  const cleanHex = predictionId.replace(/-/g, '').toLowerCase();
+  const outcomeCode = OUTCOME_CODE_MAP[outcome] || outcome;
+  const tsSec = Math.floor(Date.now() / 1000);
+
+  // HMAC binds predictionId, outcomeCode, chatId, and timestamp
+  const message = `${cleanHex}:${outcomeCode}:${chatId}:${tsSec}`;
   const hmac = createHmac('sha256', secret).update(message).digest('hex').substring(0, 16);
-  return `settle:${predictionId}:${outcome}:${chatId}:${timestamp}:${hmac}`;
+
+  return `s:${cleanHex}:${outcomeCode}:${tsSec}:${hmac}`;
 }
 
 /**
  * Verifies a callback nonce from an inline button press.
+ * Supports compact format `s:...` (<= 64 bytes) and legacy `settle:...`.
  * Returns parsed fields if valid, null if invalid or expired.
  */
 export function verifyCallbackNonce(
@@ -433,28 +461,72 @@ export function verifyCallbackNonce(
   fromChatId: number
 ): { predictionId: string; outcome: string } | null {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-  if (!secret) return null;
+  if (!secret || !callbackData || typeof callbackData !== 'string') return null;
 
-  const parts = callbackData.split(':');
-  if (parts.length !== 6 || parts[0] !== 'settle') return null;
+  // 1. Compact format: s:{cleanHex32}:{outcomeCode}:{tsSec}:{hmac16}
+  if (callbackData.startsWith('s:')) {
+    const parts = callbackData.split(':');
+    if (parts.length !== 5) return null;
 
-  const [, predictionId, outcome, chatIdStr, timestampStr, receivedHmac] = parts;
-  const chatId = Number(chatIdStr);
-  const timestamp = Number(timestampStr);
+    const [, cleanHex, outcomeCode, tsSecStr, receivedHmac] = parts;
+    if (!/^[0-9a-f]{32}$/i.test(cleanHex)) return null;
 
-  // Verify chat_id matches the sender
-  if (chatId !== fromChatId) return null;
+    const outcome = CODE_OUTCOME_MAP[outcomeCode];
+    if (!outcome) return null;
 
-  // Verify not expired
-  if (Date.now() - timestamp > CALLBACK_NONCE_TTL_MS) return null;
+    const tsSec = Number(tsSecStr);
+    if (!Number.isInteger(tsSec)) return null;
 
-  // Re-compute HMAC
-  const message = `${predictionId}:${outcome}:${chatId}:${timestamp}`;
-  const expectedHmac = createHmac('sha256', secret).update(message).digest('hex').substring(0, 16);
+    const tsMs = tsSec * 1000;
+    const now = Date.now();
+    // Expiry check (15 min) + reasonable clock-skew tolerance (60s in future)
+    if (now - tsMs > CALLBACK_NONCE_TTL_MS || tsMs > now + 60000) {
+      return null;
+    }
 
-  if (receivedHmac !== expectedHmac) return null;
+    // Re-compute HMAC with caller's chat ID (16 hex chars)
+    const message = `${cleanHex.toLowerCase()}:${outcomeCode}:${fromChatId}:${tsSec}`;
+    const expectedHmac = createHmac('sha256', secret).update(message).digest('hex').substring(0, 16);
 
-  return { predictionId, outcome };
+    if (receivedHmac.length !== expectedHmac.length) return null;
+    let diff = 0;
+    for (let i = 0; i < expectedHmac.length; i++) {
+      diff |= expectedHmac.charCodeAt(i) ^ receivedHmac.charCodeAt(i);
+    }
+    if (diff !== 0) return null;
+
+    // Restore canonical UUID format
+    const predictionId = `${cleanHex.slice(0, 8)}-${cleanHex.slice(8, 12)}-${cleanHex.slice(12, 16)}-${cleanHex.slice(16, 20)}-${cleanHex.slice(20)}`.toLowerCase();
+    return { predictionId, outcome };
+  }
+
+  // 2. Legacy fallback: settle:{predictionId}:{outcome}:{chatId}:{timestamp}:{hmac}
+  if (callbackData.startsWith('settle:')) {
+    const parts = callbackData.split(':');
+    if (parts.length !== 6) return null;
+
+    const [, predictionId, outcome, chatIdStr, timestampStr, receivedHmac] = parts;
+    const chatId = Number(chatIdStr);
+    const timestamp = Number(timestampStr);
+
+    if (Number.isNaN(chatId) || Number.isNaN(timestamp)) return null;
+    if (chatId !== fromChatId) return null;
+    if (Date.now() - timestamp > CALLBACK_NONCE_TTL_MS) return null;
+
+    const message = `${predictionId}:${outcome}:${chatId}:${timestamp}`;
+    const expectedHmac = createHmac('sha256', secret).update(message).digest('hex').substring(0, 16);
+
+    if (receivedHmac.length !== expectedHmac.length) return null;
+    let diff = 0;
+    for (let i = 0; i < expectedHmac.length; i++) {
+      diff |= expectedHmac.charCodeAt(i) ^ receivedHmac.charCodeAt(i);
+    }
+    if (diff !== 0) return null;
+
+    return { predictionId, outcome };
+  }
+
+  return null;
 }
 
 // ============================================================
@@ -495,6 +567,9 @@ export async function enqueueNotification(params: SendNotificationParams): Promi
 // Telegram API Client
 // ============================================================
 
+/** Bounded HTTP request timeout (15s), safely below the 5-minute stale notification threshold */
+export const TELEGRAM_REQUEST_TIMEOUT_MS = 15_000;
+
 async function callTelegramApi(method: string, body: Record<string, unknown>): Promise<any> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error('TELEGRAM_BOT_TOKEN not configured');
@@ -503,6 +578,7 @@ async function callTelegramApi(method: string, body: Record<string, unknown>): P
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TELEGRAM_REQUEST_TIMEOUT_MS),
   });
 
   const data = await res.json() as any;
@@ -516,9 +592,44 @@ async function callTelegramApi(method: string, body: Record<string, unknown>): P
 }
 
 /**
+ * Recovers notifications left in SENDING after an interrupted worker.
+ * Stale if updated_at < NOW() - INTERVAL '5 minutes'.
+ * If attempts >= 5, marks FAILED. Otherwise resets to PENDING with attempts incremented.
+ */
+export async function recoverStaleSendingNotifications(staleMinutes = 5): Promise<number> {
+  // 1. Mark rows with attempts >= 5 as FAILED
+  await query(
+    `UPDATE notification_queue
+     SET status = 'FAILED',
+         error = 'Interrupted worker: maximum attempts reached in SENDING state',
+         updated_at = NOW()
+     WHERE status = 'SENDING'
+       AND updated_at < NOW() - ($1 || ' minutes')::interval
+       AND attempts >= 5;`,
+    [staleMinutes]
+  );
+
+  // 2. Recover other stale SENDING rows back to PENDING with attempts incremented
+  const res = await query(
+    `UPDATE notification_queue
+     SET status = 'PENDING',
+         attempts = attempts + 1,
+         next_retry_at = NOW(),
+         error = 'Recovered from stale SENDING state after worker interruption',
+         updated_at = NOW()
+     WHERE status = 'SENDING'
+       AND updated_at < NOW() - ($1 || ' minutes')::interval;`,
+    [staleMinutes]
+  );
+
+  return res.rowCount ?? 0;
+}
+
+/**
  * Processes pending notifications from the queue.
  * Call from the cron endpoint after settlement.
  * Respects Telegram rate limits; marks blocked/deleted chats as BLOCKED.
+ * Concurrency-safe: claims rows atomically via UPDATE ... FOR UPDATE SKIP LOCKED.
  */
 export async function processNotificationQueue(maxItems = 20): Promise<{
   sent: number;
@@ -527,6 +638,10 @@ export async function processNotificationQueue(maxItems = 20): Promise<{
 }> {
   const stats = { sent: 0, failed: 0, blocked: 0 };
 
+  // 1. Recover stale SENDING notifications from interrupted workers
+  await recoverStaleSendingNotifications();
+
+  // 2. Atomically claim pending notifications and transition to SENDING
   const pendingRes = await query<{
     id: string;
     user_id: string;
@@ -535,13 +650,18 @@ export async function processNotificationQueue(maxItems = 20): Promise<{
     payload_json: any;
     attempts: number;
   }>(
-    `SELECT nq.id, nq.user_id, nq.prediction_id, nq.notification_type, nq.payload_json, nq.attempts
-     FROM notification_queue nq
-     WHERE nq.status = 'PENDING'
-       AND nq.next_retry_at <= NOW()
-     ORDER BY nq.created_at ASC
-     LIMIT $1
-     FOR UPDATE SKIP LOCKED;`,
+    `UPDATE notification_queue
+     SET status = 'SENDING', updated_at = NOW()
+     WHERE id IN (
+       SELECT id
+       FROM notification_queue
+       WHERE status = 'PENDING'
+         AND next_retry_at <= NOW()
+       ORDER BY created_at ASC
+       LIMIT $1
+       FOR UPDATE SKIP LOCKED
+     )
+     RETURNING id, user_id, prediction_id, notification_type, payload_json, attempts;`,
     [maxItems]
   );
 
@@ -565,8 +685,6 @@ export async function processNotificationQueue(maxItems = 20): Promise<{
     const payload = item.payload_json as SendNotificationParams['payload'];
 
     try {
-      await query(`UPDATE notification_queue SET status = 'SENDING', updated_at = NOW() WHERE id = $1;`, [item.id]);
-
       if (item.notification_type === 'SETTLEMENT_AUTO') {
         await sendAutoSettlementMessage(chatId, payload);
       } else if (item.notification_type === 'SETTLEMENT_MANUAL') {
@@ -620,17 +738,20 @@ export async function processNotificationQueue(maxItems = 20): Promise<{
 
 async function sendAutoSettlementMessage(chatId: number, payload: SendNotificationParams['payload']): Promise<void> {
   const outcome = payload.outcome ?? 'UNKNOWN';
+  const isVoid = outcome === 'VOID';
   const emoji = outcome === 'WON' ? '✅' : outcome === 'LOST' ? '❌' : '↩️';
   const appUrl = process.env.APP_BASE_URL ?? '';
+  const title = isVoid ? 'Match Cancelled — Pick Voided' : 'Result Verified';
+  const scoreLine = (!isVoid && payload.score) ? `*Score:* ${escapeMarkdown(payload.score)}\n` : '';
 
   const text =
-    `${emoji} *Result Verified*\n\n` +
+    `${emoji} *${escapeMarkdown(title)}*\n\n` +
     `*Match:* ${escapeMarkdown(payload.eventName)}\n` +
     `*Analyst:* ${escapeMarkdown(payload.analystName)}\n` +
     `*Pick:* ${escapeMarkdown(payload.market)} — ${escapeMarkdown(payload.selection)}\n` +
     `*Result:* *${outcome}*\n` +
-    `*Score:* ${escapeMarkdown(payload.score ?? '—')}\n` +
-    `*Evidence:* ${escapeMarkdown(payload.reason ?? '—')}\n\n` +
+    scoreLine +
+    `*Evidence:* ${escapeMarkdown(payload.reason ?? (isVoid ? 'Match cancelled; pick voided' : '—'))}\n\n` +
     `_API\\-Verified result_`;
 
   await callTelegramApi('sendMessage', {
@@ -747,7 +868,7 @@ export async function handleTelegramCallbackQuery(params: {
 }> {
   const { callbackData, fromChatId, callbackQueryId } = params;
 
-  if (!callbackData.startsWith('settle:')) {
+  if (!callbackData.startsWith('s:') && !callbackData.startsWith('settle:')) {
     return { success: false, error: 'Unknown callback prefix' };
   }
 

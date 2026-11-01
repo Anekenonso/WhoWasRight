@@ -23,6 +23,7 @@ import { runDailyLimitsUnitTests } from './unit/daily-limits.test.ts';
 import { runSettlementUnitTests } from './unit/settlement.test.ts';
 import { runPhase5UnitTests } from './unit/phase5-telegram-settler.test.ts';
 import { runTestIsolationUnitTests } from './unit/test-isolation.test.ts';
+import { runSequenceAllocatorUnitTests } from './unit/sequence-allocator.test.ts';
 import { enforceTestDatabaseIsolation } from '../src/core/test-isolation.ts';
 import { closeDbPool } from '../src/core/db.ts';
 
@@ -80,6 +81,11 @@ async function main() {
   const isolationRes = runTestIsolationUnitTests();
   totalTests += isolationRes.count;
   totalFailures.push(...isolationRes.failures);
+
+  // 10. V2 Sequence Allocator Unit Tests
+  const seqRes = await runSequenceAllocatorUnitTests();
+  totalTests += seqRes.count;
+  totalFailures.push(...seqRes.failures);
 
   // Enforce strict test database isolation before loading integration tests
   console.log('\n--- Enforcing Test Database Isolation Guard ---');

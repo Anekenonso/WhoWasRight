@@ -33,7 +33,7 @@ import {
   verifyTelegramLoginPayload,
   revokeSession,
 } from '../core/auth.ts';
-import { createDemoSession, isDemoUser } from '../core/demo-mode.ts';
+import { createDemoSession, isDemoUser, cleanupExpiredDemoSessions } from '../core/demo-mode.ts';
 import {
   generateBotLinkToken,
   confirmBotLink,
@@ -582,14 +582,28 @@ export function createWebServer(): http.Server {
         return sendJson(res, 200, { ok: true });
       }
 
-      // Cron: Football settlement + notification dispatch
+      // Cron: Football settlement + notification dispatch + demo session cleanup
       if (pathname === '/api/cron/settle' && method === 'POST') {
         if (!verifyCronSecret(req.headers['authorization'])) {
           return sendJson(res, 401, { error: 'Unauthorized' });
         }
         const settlementResult = await runSettlementCycle();
         const notifResult = await processNotificationQueue();
-        return sendJson(res, 200, { settlement: settlementResult, notifications: notifResult });
+
+        let demoCleanupResult: { cleaned: number; error: string | null } = { cleaned: 0, error: null };
+        try {
+          const cleanedCount = await cleanupExpiredDemoSessions();
+          demoCleanupResult.cleaned = cleanedCount;
+        } catch (err: any) {
+          demoCleanupResult.error = err.message || 'Demo session cleanup failed';
+          console.error('[CRON] Demo session cleanup non-blocking error:', err);
+        }
+
+        return sendJson(res, 200, {
+          settlement: settlementResult,
+          notifications: notifResult,
+          demoCleanup: demoCleanupResult,
+        });
       }
 
       // Manual settlement: settle a prediction from the app
@@ -657,7 +671,29 @@ export function createWebServer(): http.Server {
 // -------------------------------------------------------------------
 // HTML CLIENT: Mobile-First Responsive Web Application
 // -------------------------------------------------------------------
-function renderMobileAppHtml(): string {
+export function renderMobileAppHtml(): string {
+  // Telegram Login Widget Configuration:
+  // Requires TELEGRAM_BOT_NAME or TELEGRAM_BOT_USERNAME (e.g. "WhoWasRightBot") configured in the environment.
+  // Requirements for Telegram's @BotFather:
+  // 1. Bot username must be 5-32 characters, alphanumeric and underscore, ending in 'bot' or '_bot'.
+  // 2. Production Domain Whitelist: You must run `/setdomain` in @BotFather, select the bot,
+  //    and supply the exact domain (e.g. `whowasright.onrender.com` without https:// or trailing slash).
+  //    Without /setdomain, the Telegram widget fails to render or throws "Bot domain invalid".
+  const rawBotName = (process.env.TELEGRAM_BOT_NAME || process.env.TELEGRAM_BOT_USERNAME || '').trim();
+  const isValidBotName = /^[a-zA-Z0-9_]{3,32}$/i.test(rawBotName);
+  const botHandle = isValidBotName ? `@${rawBotName}` : '@WhoWasRightBot';
+
+  const telegramWidgetHtml = isValidBotName
+    ? `<script async src="https://telegram.org/js/telegram-widget.js?22"
+            data-telegram-login="${rawBotName}"
+            data-size="large"
+            data-radius="8"
+            data-onauth="onTelegramAuth(user)"
+            data-request-access="write"></script>`
+    : `<div style="font-size: 12px; color: var(--muted); background: var(--bg); padding: 10px 14px; border-radius: 8px; width: 100%; text-align: center; border: 1px dashed var(--border);">
+            Telegram login is unconfigured (<code>TELEGRAM_BOT_NAME</code> missing). Use Judge Demo Mode above to explore.
+          </div>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -996,12 +1032,10 @@ function renderMobileAppHtml(): string {
           Sign In with Telegram
         </div>
         <p style="font-size: 11px; color: var(--muted); margin-bottom: 14px;">
-          Receive verified result alerts and settlement reminders via @WhoWasRightBot.
+          Receive verified result alerts and settlement reminders via ${botHandle}.
         </p>
         <div id="telegram-login-container" style="display: flex; justify-content: center; min-height: 44px; align-items: center;">
-          <div style="font-size: 12px; color: var(--muted); background: var(--bg); padding: 10px 14px; border-radius: 8px; width: 100%;">
-            Telegram Login Widget active in production deployment
-          </div>
+          ${telegramWidgetHtml}
         </div>
       </div>
     </div>

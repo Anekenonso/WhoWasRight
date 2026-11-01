@@ -24,6 +24,7 @@ import { runSettlementUnitTests } from './unit/settlement.test.ts';
 import { runPhase5UnitTests } from './unit/phase5-telegram-settler.test.ts';
 import { runTestIsolationUnitTests } from './unit/test-isolation.test.ts';
 import { runSequenceAllocatorUnitTests } from './unit/sequence-allocator.test.ts';
+import { runDemoCleanupUnitTests } from './unit/demo-cleanup.test.ts';
 import { enforceTestDatabaseIsolation } from '../src/core/test-isolation.ts';
 import { closeDbPool } from '../src/core/db.ts';
 
@@ -86,6 +87,11 @@ async function main() {
   const seqRes = await runSequenceAllocatorUnitTests();
   totalTests += seqRes.count;
   totalFailures.push(...seqRes.failures);
+
+  // 11. Demo Cleanup & Auth Widget Unit Tests
+  const demoCleanupRes = await runDemoCleanupUnitTests();
+  totalTests += demoCleanupRes.count;
+  totalFailures.push(...demoCleanupRes.failures);
 
   // Enforce strict test database isolation before loading integration tests
   console.log('\n--- Enforcing Test Database Isolation Guard ---');

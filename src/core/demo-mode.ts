@@ -22,11 +22,23 @@ export interface DemoSessionResult {
 }
 
 /**
+ * Returns the configured Demo Session TTL in minutes.
+ * Defaults strictly to 60 minutes if DEMO_SESSION_TTL_MINUTES is unset or invalid.
+ */
+export function getDemoSessionTtlMinutes(): number {
+  const raw = process.env.DEMO_SESSION_TTL_MINUTES;
+  if (!raw || isNaN(parseInt(raw, 10))) {
+    return 60;
+  }
+  return parseInt(raw, 10);
+}
+
+/**
  * Creates an ephemeral demo session for an anonymous judge/visitor.
  * Fully isolated with negative synthetic Telegram ID and sample predictions.
  */
 export async function createDemoSession(): Promise<DemoSessionResult> {
-  const ttlMinutes = parseInt(process.env.DEMO_SESSION_TTL_MINUTES || '60', 10);
+  const ttlMinutes = getDemoSessionTtlMinutes();
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
 
   // Negative synthetic Telegram ID avoids collision with real Telegram users

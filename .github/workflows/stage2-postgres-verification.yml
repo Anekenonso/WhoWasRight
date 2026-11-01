@@ -94,8 +94,8 @@ jobs:
               version() AS postgres_version,
               current_database() AS database_name,
               inet_server_addr() AS server_addr,
-              inet_server_port() AS server_port,
-              ssl_is_used() AS ssl_active;
+              inet_server_port() AS server_port;
+            SHOW ssl;
           "
 
       - name: Verify Stage 1 Database Isolation Guard

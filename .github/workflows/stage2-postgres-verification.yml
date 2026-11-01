@@ -6,11 +6,11 @@ on:
     branches: [ master ]
     paths:
       - 'migrations/**'
-      - 'src/core/sequence-allocator.ts'
-      - 'src/core/test-isolation.ts'
-      - 'src/core/db.ts'
-      - 'tests/integration/sequence-allocator.test.ts'
+      - 'src/core/**'
+      - 'tests/integration/**'
       - '.github/workflows/stage2-postgres-verification.yml'
+  pull_request:
+    branches: [ master ]
 
 permissions:
   contents: read
@@ -144,6 +144,10 @@ jobs:
       - name: Execute Sequence Allocator Integration Suite
         run: |
           node tests/integration/sequence-allocator.test.ts
+
+      - name: Execute Walrus V2 PostgreSQL Integration Suite
+        run: |
+          node tests/integration/walrus-v2-postgres.test.ts
 
       - name: Verify Post-Test Database State & Zero Leakage
         run: |

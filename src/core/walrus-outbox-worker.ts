@@ -207,18 +207,24 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
           }
         }
 
-        // 2c. Write to Walrus if not resolved from resumed job
+        // 2c. Write to Walrus if not resolved from resumed job (passes idempotencyKey to prevent duplicate payment/writes)
         if (!jobId || !blobId) {
           if (options.walrusClientOverride) {
             // Used in unit/mock tests
-            const mockRes = await options.walrusClientOverride.rememberAndWait(item.payload, { timeoutMs: 30000 });
+            const mockRes = await options.walrusClientOverride.rememberAndWait(item.payload, {
+              idempotencyKey: item.id,
+              timeoutMs: 30000,
+            });
             jobId = mockRes.job_id || mockRes.id || `mock-job-${Date.now()}`;
             blobId = mockRes.blob_id || `mock-blob-${Date.now()}`;
             proofRef = mockRes.owner || null;
           } else {
             // Live Walrus Mainnet Integration
             const walrus = getWalrusClientForUser(item.user_id);
-            const writeRes = await walrus.rememberAndWait(item.payload, { timeoutMs: 120000 });
+            const writeRes = await walrus.rememberAndWait(item.payload, {
+              idempotencyKey: item.id,
+              timeoutMs: 120000,
+            });
             jobId = writeRes.job_id || writeRes.id;
             blobId = writeRes.blob_id;
             proofRef = writeRes.owner || null;

@@ -51,6 +51,7 @@ import {
 import { verifyCronSecret, runSettlementCycle } from '../core/football-settler.ts';
 import { processMemoryOutbox, recoverStaleInFlightOutbox } from '../core/walrus-outbox-worker.ts';
 import { settlePrediction } from '../core/predictions.ts';
+import { verifyWalrusOnchainAnchor } from '../core/tatum-verifier.ts';
 
 // Authentication error for fail-closed request rejection
 export class UnauthorizedError extends Error {
@@ -654,6 +655,13 @@ export function createWebServer(): http.Server {
           walrusOutbox: walrusOutboxResult,
           demoCleanup: demoCleanupResult,
         });
+      }
+
+      // Tatum Sui Mainnet onchain verification proof (Phase 6)
+      if (pathname === '/api/tatum/proof' && method === 'GET') {
+        await getUserIdFromRequest(req); // Enforce authentication
+        const proof = await verifyWalrusOnchainAnchor();
+        return sendJson(res, 200, proof);
       }
 
       // Manual settlement: settle a prediction from the app

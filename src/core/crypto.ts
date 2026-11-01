@@ -16,21 +16,27 @@ export interface EncryptedPayload {
   ciphertext: string; // variable hex
 }
 
-export function getAppEncryptionKey(): Buffer {
-  const hex = process.env.MEMORY_ENCRYPTION_KEY;
+export function getAppEncryptionKey(version = 1): Buffer {
+  let hex: string | undefined;
+  if (version === 1) {
+    hex = process.env.MEMORY_ENCRYPTION_KEY_V1 || process.env.MEMORY_ENCRYPTION_KEY;
+  } else {
+    hex = process.env[`MEMORY_ENCRYPTION_KEY_V${version}`];
+  }
+
   if (!hex) {
-    throw new Error('MEMORY_ENCRYPTION_KEY is not configured');
+    throw new Error(`MEMORY_ENCRYPTION_KEY (version ${version}) is not configured`);
   }
   const cleanHex = hex.replace(/^0x/, '');
   const buf = Buffer.from(cleanHex, 'hex');
   if (buf.length !== 32) {
-    throw new Error(`MEMORY_ENCRYPTION_KEY must be exactly 32 bytes (got ${buf.length})`);
+    throw new Error(`MEMORY_ENCRYPTION_KEY (version ${version}) must be exactly 32 bytes (got ${buf.length})`);
   }
   return buf;
 }
 
-export function encryptRecord(data: unknown, key?: Buffer): EncryptedPayload {
-  const encKey = key || getAppEncryptionKey();
+export function encryptRecord(data: unknown, key?: Buffer, version = 1): EncryptedPayload {
+  const encKey = key || getAppEncryptionKey(version);
   const iv = randomBytes(12); // standard 96-bit IV for GCM
   const cipher = createCipheriv('aes-256-gcm', encKey, iv);
 
@@ -45,8 +51,8 @@ export function encryptRecord(data: unknown, key?: Buffer): EncryptedPayload {
   };
 }
 
-export function decryptRecord<T>(payload: EncryptedPayload, key?: Buffer): T {
-  const encKey = key || getAppEncryptionKey();
+export function decryptRecord<T>(payload: EncryptedPayload, key?: Buffer, version = 1): T {
+  const encKey = key || getAppEncryptionKey(version);
   const iv = Buffer.from(payload.iv, 'hex');
   const tag = Buffer.from(payload.tag, 'hex');
   const ct = Buffer.from(payload.ciphertext, 'hex');
@@ -59,8 +65,8 @@ export function decryptRecord<T>(payload: EncryptedPayload, key?: Buffer): T {
 }
 
 /**
- * Encodes structured memory envelope:
- * [WWR:v1] [analyst:<id>] [type:<event>] [seq:<n>] [enc:<iv>:<tag>:<ciphertext>]
+ * Encodes structured memory envelope with explicit key version:
+ * [WWR:v1] [kv:<version>] [analyst:<id>] [type:<event>] [seq:<n>] [enc:<iv>:<tag>:<ciphertext>]
  */
 export function formatStructuredMemory(params: {
   analystId: string;
@@ -68,36 +74,69 @@ export function formatStructuredMemory(params: {
   sequenceNumber: number | bigint;
   payload: unknown;
   key?: Buffer;
+  keyVersion?: number;
 }): string {
-  const enc = encryptRecord(params.payload, params.key);
+  const keyVer = params.keyVersion ?? 1;
+  const enc = encryptRecord(params.payload, params.key, keyVer);
   const encBlock = `[enc:${enc.iv}:${enc.tag}:${enc.ciphertext}]`;
-  return `[WWR:v1] [analyst:${params.analystId}] [type:${params.eventType}] [seq:${params.sequenceNumber}] ${encBlock}`;
+  return `[WWR:v1] [kv:${keyVer}] [analyst:${params.analystId}] [type:${params.eventType}] [seq:${params.sequenceNumber}] ${encBlock}`;
 }
 
 /**
- * Parses structured memory envelope and extracts metadata + encrypted payload
+ * Parses structured memory envelope and extracts metadata + encrypted payload.
+ * Fully backward-compatible with legacy envelopes omitting [kv:<n>], defaulting to keyVersion = 1.
  */
 export function parseStructuredMemory(memoryText: string): {
   version: string;
+  keyVersion: number;
   analystId: string;
   eventType: string;
   sequenceNumber: number;
   encryptedPayload: EncryptedPayload;
 } | null {
-  const regex = /\[WWR:([^\]]+)\]\s+\[analyst:([^\]]+)\]\s+\[type:([^\]]+)\]\s+\[seq:([^\]]+)\]\s+\[enc:([^:]+):([^:]+):([^\]]+)\]/;
+  const regex = /\[WWR:([^\]]+)\](?:\s+\[kv:(\d+)\])?\s+\[analyst:([^\]]+)\]\s+\[type:([^\]]+)\]\s+\[seq:([^\]]+)\]\s+\[enc:([^:]+):([^:]+):([^\]]+)\]/;
   const match = memoryText.match(regex);
   if (!match) return null;
 
   return {
     version: match[1],
-    analystId: match[2],
-    eventType: match[3],
-    sequenceNumber: parseInt(match[4], 10),
+    keyVersion: match[2] ? parseInt(match[2], 10) : 1,
+    analystId: match[3],
+    eventType: match[4],
+    sequenceNumber: parseInt(match[5], 10),
     encryptedPayload: {
-      iv: match[5],
-      tag: match[6],
-      ciphertext: match[7],
+      iv: match[6],
+      tag: match[7],
+      ciphertext: match[8],
     },
+  };
+}
+
+/**
+ * Decrypts structured memory envelope with automatic key-version resolution.
+ * Fails closed on unknown key versions, tampered ciphertexts, or corrupt tags.
+ */
+export function decryptStructuredMemory<T>(memoryText: string, customKey?: Buffer): {
+  metadata: { version: string; keyVersion: number; analystId: string; eventType: string; sequenceNumber: number };
+  payload: T;
+} {
+  const parsed = parseStructuredMemory(memoryText);
+  if (!parsed) {
+    throw new Error('Malformed structured memory envelope');
+  }
+
+  const key = customKey || getAppEncryptionKey(parsed.keyVersion);
+  const payload = decryptRecord<T>(parsed.encryptedPayload, key, parsed.keyVersion);
+
+  return {
+    metadata: {
+      version: parsed.version,
+      keyVersion: parsed.keyVersion,
+      analystId: parsed.analystId,
+      eventType: parsed.eventType,
+      sequenceNumber: parsed.sequenceNumber,
+    },
+    payload,
   };
 }
 

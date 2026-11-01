@@ -62,7 +62,7 @@ export function reconstructFromWalrusMemories(
     }
 
     try {
-      const decrypted = decryptRecord<any>(parsed.encryptedPayload, encryptionKey);
+      const decrypted = decryptRecord<any>(parsed.encryptedPayload, encryptionKey, parsed.keyVersion);
       allParsedEvents.push({
         sequenceNumber: parsed.sequenceNumber,
         analystId: parsed.analystId,

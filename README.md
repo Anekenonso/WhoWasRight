@@ -101,9 +101,33 @@ node --env-file-if-exists=.env tests/unit/demo-cleanup.test.ts
 
 ---
 
+## Verified Sponsor Integrations & Mainnet Proofs
+
+WhoWasRight integrates **Walrus Memory** and **Tatum Sui Gateway** with authentic onchain proofs on Sui Mainnet:
+
+### 1. Walrus Mainnet Decentralized Memory (`@mysten-incubation/memwal`)
+- **Relayer:** `https://relayer.memory.walrus.xyz` (Production Mainnet)
+- **Top-K Vector Lossiness Mitigation:** Solved the semantic truncation dilemma by wrapping events in structured hybrid envelopes with application-layer AES-256-GCM encryption and maintaining deterministic sequence replay.
+- **Confirmed Memory Writes:** Exceeds the hackathon minimum with **70+ confirmed Mainnet memories** (and 13 fully traced audit events documented in [`docs/evidence/walrus-history-proof.json`](docs/evidence/walrus-history-proof.json)).
+- **Sample Mainnet Confirmations:**
+  - `Job ID: 6d7f7793-67e0-4d42-83dd-a213638347d7` | `Blob ID: h4TO8psqwWt64eTII2stzdg1g9YtCEE5Nb9iiQMjAbY`
+  - `Job ID: f52d8f6d-356a-475d-90b1-54944b18836b` | `Blob ID: mYtp2vRSDUfjTAMoKjO4x07AgqKVDn-Yv5h-dpWiw9M`
+  - `Job ID: ef6047e5-3ea4-4c8e-8e0f-86021bab7a37` | `Blob ID: COsYDP2FMryO9xuy4nOD70IzCWVmPnYGmRd1RuHIhw8`
+
+### 2. Tatum Sui Mainnet Gateway (HTTP/2 gRPC)
+- **Gateway Endpoint:** `https://sui-mainnet-grpc.gateway.tatum.io`
+- **Method:** `/sui.rpc.v2.LedgerService/GetObject`
+- **Onchain Anchor Object:** Queries the live Move shared object `MemWalAccount` (`0xc2225f53b9cb17f56253766942908c2ebb41c1e99dfecb774bb182e3e9841090`) anchoring Walrus memory spaces.
+- **Live Proof Endpoint:** Authenticated clients can inspect live onchain validator proof directly via `GET /api/tatum/proof`.
+- **Detailed Integration Report:** See [`docs/INTEGRATION_PROOFS.md`](docs/INTEGRATION_PROOFS.md) and [`docs/PHASE_6_REPORT.md`](docs/PHASE_6_REPORT.md).
+
+---
+
 ## Security & Architecture
 
 - **Session Security:** Bearer token authentication with HMAC-SHA256 signature verification and cryptographically random session tokens.
 - **Sensitive Data Isolation:** Demo mode accounts are strictly partitioned by negative Telegram IDs (`telegram_id < 0`), ensuring demo sessions cannot interact with production user journals.
 - **Replay & Tamper Defense:** Telegram authentication payloads are HMAC-SHA256 verified against the configured bot secret with a strict 24-hour timestamp check.
+- **Outbox Concurrency & Rate Safety:** Bounded batch processing prevents gateway timeouts while ensuring reliable asynchronous memory delivery.
+
 

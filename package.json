@@ -11,6 +11,8 @@
     "migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
     "migrate:test": "node --env-file-if-exists=.env scripts/migrate.ts --test",
     "test": "node --env-file-if-exists=.env tests/run-all-tests.ts",
+    "test:unit:auth": "node --env-file-if-exists=.env tests/unit/auth-logout-delete.test.ts",
+    "test:unit:demo": "node --env-file-if-exists=.env tests/unit/demo-cleanup.test.ts",
     "test:unit:credibility": "node --env-file-if-exists=.env tests/unit/credibility.test.ts",
     "test:unit:walrus": "node --env-file-if-exists=.env tests/unit/walrus-reconstruction.test.ts",
     "test:unit:telegram": "node --env-file-if-exists=.env tests/unit/telegram-auth.test.ts",

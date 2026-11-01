@@ -32,6 +32,7 @@ import {
   authenticateTelegramUser,
   verifyTelegramLoginPayload,
   revokeSession,
+  deleteUserAccount,
 } from '../core/auth.ts';
 import { createDemoSession, isDemoUser, cleanupExpiredDemoSessions } from '../core/demo-mode.ts';
 import {
@@ -336,6 +337,13 @@ export function createWebServer(): http.Server {
         }
         res.setHeader('Set-Cookie', 'session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
         return sendJson(res, 200, { success: true, message: 'Signed out successfully' });
+      }
+
+      if (pathname === '/api/account/delete' && method === 'POST') {
+        const userId = await getUserIdFromRequest(req);
+        await deleteUserAccount(userId);
+        res.setHeader('Set-Cookie', 'session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+        return sendJson(res, 200, { success: true, message: 'Account deleted successfully' });
       }
 
       // 1. Health check
@@ -1583,9 +1591,14 @@ export function renderMobileAppHtml(): string {
       const text = document.getElementById('auth-error-text');
       if (msg && banner && text) {
         text.textContent = msg;
+        const isError = msg.toLowerCase().includes('error') || msg.toLowerCase().includes('fail') || msg.toLowerCase().includes('required') || msg.toLowerCase().includes('expired');
+        banner.className = 'banner ' + (isError ? 'banner-error' : 'banner-success');
         banner.classList.remove('hidden');
       } else if (banner) {
         banner.classList.add('hidden');
+      }
+      if (window.location.pathname !== '/' || window.location.search) {
+        window.history.replaceState({}, document.title, '/');
       }
     }
 
@@ -2389,11 +2402,6 @@ export function renderMobileAppHtml(): string {
 
     function handleMarketChange() {}
 
-    function handleSignOut() {
-      alert('Signed out successfully.');
-      window.location.reload();
-    }
-
     async function refreshBotStatus() {
       try {
         const res = await apiFetch('/api/bot/status');
@@ -2504,13 +2512,6 @@ export function renderMobileAppHtml(): string {
           feedbackEl.textContent = 'Network error updating preferences.';
           feedbackEl.classList.remove('hidden');
         }
-      }
-    }
-
-    function handleDeleteAccount() {
-      if (confirm('Are you sure you want to delete your account? All private journal entries will be deleted.')) {
-        alert('Account deletion scheduled.');
-        window.location.reload();
       }
     }
   </script>

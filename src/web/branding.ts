@@ -88,3 +88,4 @@ export const LOGO_HERO_SVG = `<div style="display: inline-flex; align-items: cen
     <path d="M21 24.5L26 29.5L37.5 15" stroke="url(#hero-check-grad)" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" filter="url(#hero-check-glow)"/>
   </svg>
 </div>`;
+

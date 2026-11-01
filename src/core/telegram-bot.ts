@@ -38,6 +38,7 @@ export interface TelegramUpdate {
     from?: { id: number; username?: string; first_name?: string };
     chat: { id: number; type: string };
     text?: string;
+    connected_website?: string;
   };
   callback_query?: {
     id: string;
@@ -64,6 +65,54 @@ export interface SendNotificationParams {
 }
 
 // ============================================================
+// Bot Username & Canonical Domain Resolvers
+// ============================================================
+
+/**
+ * Resolves the configured Telegram bot username from either TELEGRAM_BOT_USERNAME or TELEGRAM_BOT_NAME.
+ * Normalizes leading '@' and whitespace.
+ * Validates 3-32 characters, alphanumeric and underscore.
+ * Returns null if not configured or invalid.
+ */
+export function getBotUsername(): string | null {
+  const raw = process.env.TELEGRAM_BOT_USERNAME || process.env.TELEGRAM_BOT_NAME;
+  if (!raw || typeof raw !== 'string') return null;
+  const cleaned = raw.trim().replace(/^@+/, '').trim();
+  if (!cleaned || !/^[a-zA-Z0-9_]{3,32}$/i.test(cleaned)) {
+    return null;
+  }
+  return cleaned;
+}
+
+/**
+ * Resolves the canonical domain for the application.
+ * Normalized to lowercase hostname without protocol, port, or path.
+ * Checks APP_BASE_URL, RENDER_EXTERNAL_URL, CANONICAL_DOMAIN, falling back to 'whowasright.onrender.com'.
+ */
+export function getCanonicalDomain(): string {
+  const envUrl = process.env.APP_BASE_URL || process.env.RENDER_EXTERNAL_URL || process.env.CANONICAL_DOMAIN;
+  if (envUrl) {
+    try {
+      const url = envUrl.includes('://') ? new URL(envUrl) : new URL(`https://${envUrl}`);
+      return url.hostname.toLowerCase();
+    } catch {
+      return envUrl.replace(/^https?:\/\//i, '').split('/')[0].split(':')[0].toLowerCase();
+    }
+  }
+  return 'whowasright.onrender.com';
+}
+
+/**
+ * Confirms whether the incoming connected_website domain matches the canonical domain.
+ */
+export function isCanonicalDomain(domain: string | undefined): boolean {
+  if (!domain || typeof domain !== 'string') return false;
+  const canonical = getCanonicalDomain();
+  const incoming = domain.trim().toLowerCase();
+  return incoming === canonical;
+}
+
+// ============================================================
 // Linking Token Generation & Verification
 // ============================================================
 
@@ -75,8 +124,18 @@ export async function generateBotLinkToken(userId: string): Promise<{
   plaintextToken: string;
   deepLink: string;
 }> {
-  const botUsername = process.env.TELEGRAM_BOT_USERNAME;
-  if (!botUsername) throw new Error('TELEGRAM_BOT_USERNAME not configured');
+  const botUsername = getBotUsername();
+  if (!botUsername) {
+    const configuredVar = process.env.TELEGRAM_BOT_USERNAME !== undefined
+      ? 'TELEGRAM_BOT_USERNAME'
+      : process.env.TELEGRAM_BOT_NAME !== undefined
+        ? 'TELEGRAM_BOT_NAME'
+        : null;
+    if (configuredVar) {
+      throw new Error(`Telegram bot username configured in ${configuredVar} is invalid`);
+    }
+    throw new Error('Telegram bot username is not configured (set TELEGRAM_BOT_USERNAME or TELEGRAM_BOT_NAME)');
+  }
 
   // Expire any existing unused tokens for this user first
   await query(
@@ -97,6 +156,109 @@ export async function generateBotLinkToken(userId: string): Promise<{
     plaintextToken,
     deepLink: `https://t.me/${botUsername}?start=link_${plaintextToken}`,
   };
+}
+
+/**
+ * Handles Telegram's connected_website service message from Telegram Login Widget (data-request-access="write").
+ * Invariants:
+ * 1. Confirms connected_website domain matches canonical production domain.
+ * 2. Requires a private chat and identifies account via message.chat.id.
+ * 3. Matches chat.id against an existing, non-deleted users.telegram_id.
+ * 4. Never creates accounts from webhook events.
+ * 5. Idempotent: repeated updates do not duplicate records or overwrite disabled notification preferences.
+ * 6. Prevents cross-account reassignment: chat.id cannot be bound to another user.
+ */
+export async function handleConnectedWebsite(message: {
+  chat?: { id: number; type: string };
+  from?: { id: number; username?: string };
+  connected_website?: string;
+}): Promise<{
+  success: boolean;
+  ignored?: boolean;
+  reason?: string;
+  alreadyLinked?: boolean;
+}> {
+  if (!isCanonicalDomain(message.connected_website)) {
+    return { success: false, ignored: true, reason: 'Domain mismatch' };
+  }
+
+  if (!message.chat || message.chat.type !== 'private') {
+    return { success: false, ignored: true, reason: 'Chat must be private' };
+  }
+
+  const telegramChatId = message.chat.id;
+  if (!telegramChatId || typeof telegramChatId !== 'number') {
+    return { success: false, ignored: true, reason: 'Invalid chat ID' };
+  }
+
+  const userRes = await query<{
+    id: string;
+    telegram_id: string;
+  }>(
+    `SELECT id, telegram_id
+     FROM users
+     WHERE telegram_id = $1 AND deleted_at IS NULL;`,
+    [telegramChatId]
+  );
+
+  if (userRes.rows.length === 0) {
+    return { success: false, ignored: true, reason: 'User not found or deleted' };
+  }
+
+  const userId = userRes.rows[0].id;
+
+  return withTransaction(async (client) => {
+    // Check if telegramChatId is already linked to a DIFFERENT user
+    const conflictRes = await client.query<{ user_id: string }>(
+      `SELECT user_id FROM bot_links WHERE telegram_chat_id = $1;`,
+      [telegramChatId]
+    );
+
+    if (conflictRes.rows.length > 0 && conflictRes.rows[0].user_id !== userId) {
+      return {
+        success: false,
+        reason: 'Telegram chat already linked to a different account',
+      };
+    }
+
+    // Check if this user already has a bot_links record
+    const existingLinkRes = await client.query<{
+      telegram_chat_id: string;
+      enabled: boolean;
+    }>(
+      `SELECT telegram_chat_id, enabled FROM bot_links WHERE user_id = $1 FOR UPDATE;`,
+      [userId]
+    );
+
+    if (existingLinkRes.rows.length > 0) {
+      const existingLink = existingLinkRes.rows[0];
+      const existingChatId = Number(existingLink.telegram_chat_id);
+
+      if (existingChatId !== telegramChatId) {
+        return {
+          success: false,
+          reason: 'Account already linked to a different Telegram chat',
+        };
+      }
+
+      // Repeated update for already linked account: preserve existing notification preference
+      await client.query(
+        `UPDATE bot_links SET updated_at = NOW() WHERE user_id = $1;`,
+        [userId]
+      );
+
+      return { success: true, alreadyLinked: true };
+    }
+
+    // New link: initialize with enabled = true
+    await client.query(
+      `INSERT INTO bot_links (user_id, telegram_chat_id, enabled, linked_at, updated_at)
+       VALUES ($1, $2, TRUE, NOW(), NOW());`,
+      [userId, telegramChatId]
+    );
+
+    return { success: true, alreadyLinked: false };
+  });
 }
 
 /**

@@ -45,6 +45,8 @@ import {
   sendMessage as sendTelegramMessage,
   processNotificationQueue,
   handleTelegramCallbackQuery,
+  getBotUsername,
+  handleConnectedWebsite,
 } from '../core/telegram-bot.ts';
 import { verifyCronSecret, runSettlementCycle } from '../core/football-settler.ts';
 import { settlePrediction } from '../core/predictions.ts';
@@ -525,8 +527,14 @@ export function createWebServer(): http.Server {
       // Bot: Generate linking token
       if (pathname === '/api/bot/activate' && method === 'POST') {
         const userId = await getUserIdFromRequest(req);
-        const { plaintextToken, deepLink } = await generateBotLinkToken(userId);
-        return sendJson(res, 200, { deepLink, token: plaintextToken });
+        try {
+          const { plaintextToken, deepLink } = await generateBotLinkToken(userId);
+          return sendJson(res, 200, { deepLink, token: plaintextToken });
+        } catch (err: any) {
+          const msg = err.message || 'Failed to activate bot';
+          const isConfigError = msg.includes('not configured') || msg.includes('is invalid');
+          return sendJson(res, isConfigError ? 503 : 500, { error: msg });
+        }
       }
 
       // Bot: Get link status
@@ -552,7 +560,23 @@ export function createWebServer(): http.Server {
         }
         const update = await parseJsonBody(req);
 
-        // Bot activation via deep link
+        // 1. Telegram connected_website event (from Telegram Login Widget data-request-access="write")
+        if (update && update.message && update.message.connected_website) {
+          const result = await handleConnectedWebsite(update.message);
+          if (result.success && !result.alreadyLinked) {
+            try {
+              await sendTelegramMessage(
+                update.message.chat.id,
+                'WhoWasRight connected! You will receive result notifications here.'
+              );
+            } catch (msgErr) {
+              console.error('[TELEGRAM] Non-fatal welcome message send error:', msgErr);
+            }
+          }
+          return sendJson(res, 200, { ok: true, ...result });
+        }
+
+        // 2. Bot activation via deep link (/start link_...)
         if (update && update.message && update.message.text && update.message.text.startsWith('/start link_')) {
           const token = update.message.text.replace('/start link_', '').trim();
           const chatId = update.message.chat.id;
@@ -565,7 +589,7 @@ export function createWebServer(): http.Server {
           return sendJson(res, 200, { ok: true });
         }
 
-        // Inline button callbacks (manual settlement)
+        // 3. Inline button callbacks (manual settlement)
         if (update && update.callback_query) {
           const cbq = update.callback_query;
           const callbackData = cbq.data || '';
@@ -679,19 +703,19 @@ export function renderMobileAppHtml(): string {
   // 2. Production Domain Whitelist: You must run `/setdomain` in @BotFather, select the bot,
   //    and supply the exact domain (e.g. `whowasright.onrender.com` without https:// or trailing slash).
   //    Without /setdomain, the Telegram widget fails to render or throws "Bot domain invalid".
-  const rawBotName = (process.env.TELEGRAM_BOT_NAME || process.env.TELEGRAM_BOT_USERNAME || '').trim();
-  const isValidBotName = /^[a-zA-Z0-9_]{3,32}$/i.test(rawBotName);
-  const botHandle = isValidBotName ? `@${rawBotName}` : '@WhoWasRightBot';
+  const botUsername = getBotUsername();
+  const isValidBotName = !!botUsername;
+  const botHandle = isValidBotName ? `@${botUsername}` : '@WhoWasRightBot';
 
   const telegramWidgetHtml = isValidBotName
     ? `<script async src="https://telegram.org/js/telegram-widget.js?22"
-            data-telegram-login="${rawBotName}"
+            data-telegram-login="${botUsername}"
             data-size="large"
             data-radius="8"
             data-onauth="onTelegramAuth(user)"
             data-request-access="write"></script>`
     : `<div style="font-size: 12px; color: var(--muted); background: var(--bg); padding: 10px 14px; border-radius: 8px; width: 100%; text-align: center; border: 1px dashed var(--border);">
-            Telegram login is unconfigured (<code>TELEGRAM_BOT_NAME</code> missing). Use Judge Demo Mode above to explore.
+            Telegram login is unconfigured (<code>TELEGRAM_BOT_NAME</code> or <code>TELEGRAM_BOT_USERNAME</code> missing).
           </div>`;
 
   return `<!DOCTYPE html>
@@ -1338,13 +1362,14 @@ export function renderMobileAppHtml(): string {
           <span class="badge badge-good" id="settings-bot-status">Connected</span>
         </div>
         <div id="settings-bot-activation-prompt" style="padding: 10px 0; border-top: 1px solid var(--border); display: none;">
-          <p style="font-size: 12px; color: var(--slate); margin-bottom: 8px;">Enable Result Reminders to receive verified result alerts and manual score settlement prompts via @WhoWasRightBot.</p>
+          <p style="font-size: 12px; color: var(--slate); margin-bottom: 8px;">Enable Result Reminders to receive verified result alerts and manual score settlement prompts via ${botHandle}.</p>
           <button id="btn-activate-bot" class="btn btn-primary btn-sm" onclick="handleActivateBot()">Enable Result Reminders</button>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--border);">
           <span style="font-size: 13px; font-weight: 500;">Settlement Notifications</span>
           <div style="display: flex; align-items: center; gap: 8px;"><span class="badge badge-verified" id="settings-notifications-status">Enabled</span><button id="btn-toggle-notifications" class="btn btn-outline btn-sm" onclick="handleToggleNotifications()">Toggle</button></div>
         </div>
+        <div id="settings-bot-feedback" class="banner hidden" style="margin-top: 12px; font-size: 12px;"></div>
       </div>
 
       <div class="card">
@@ -1661,6 +1686,7 @@ export function renderMobileAppHtml(): string {
       if (tab === 'home') renderHomeOverview();
       if (tab === 'predictions') renderPredictionsList();
       if (tab === 'analysts') renderAnalystsList();
+      if (tab === 'settings') refreshBotStatus();
     }
 
     // Open dedicated Log Screen (Primary Action)
@@ -2238,18 +2264,30 @@ export function renderMobileAppHtml(): string {
           const badge = document.getElementById('settings-bot-status');
           const prompt = document.getElementById('settings-bot-activation-prompt');
           const notifStatus = document.getElementById('settings-notifications-status');
+          const toggleBtn = document.getElementById('btn-toggle-notifications');
           if (status.linked) {
-            badge.textContent = 'Connected';
-            badge.className = 'badge badge-good';
+            if (badge) {
+              badge.textContent = 'Connected';
+              badge.className = 'badge badge-good';
+            }
             if (prompt) prompt.style.display = 'none';
+            if (toggleBtn) toggleBtn.disabled = false;
           } else {
-            badge.textContent = 'Not Connected';
-            badge.className = 'badge badge-not-rated';
+            if (badge) {
+              badge.textContent = 'Not Connected';
+              badge.className = 'badge badge-not-rated';
+            }
             if (prompt) prompt.style.display = 'block';
+            if (toggleBtn) toggleBtn.disabled = true;
           }
           if (notifStatus) {
-            notifStatus.textContent = status.enabled ? 'Enabled' : 'Disabled';
-            notifStatus.className = 'badge ' + (status.enabled ? 'badge-verified' : 'badge-not-rated');
+            if (!status.linked) {
+              notifStatus.textContent = 'Requires Bot';
+              notifStatus.className = 'badge badge-not-rated';
+            } else {
+              notifStatus.textContent = status.enabled ? 'Enabled' : 'Disabled';
+              notifStatus.className = 'badge ' + (status.enabled ? 'badge-verified' : 'badge-not-rated');
+            }
           }
         }
       } catch (err) {
@@ -2258,25 +2296,50 @@ export function renderMobileAppHtml(): string {
     }
 
     async function handleActivateBot() {
+      const feedbackEl = document.getElementById('settings-bot-feedback');
+      const btn = document.getElementById('btn-activate-bot');
+      if (btn) btn.disabled = true;
       try {
         const res = await apiFetch('/api/bot/activate', { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.deepLink) {
-            window.open(data.deepLink, '_blank');
+        const data = await res.json();
+        if (res.ok && data.deepLink) {
+          if (feedbackEl) {
+            feedbackEl.className = 'banner banner-success';
+            feedbackEl.innerHTML = 'Opening Telegram bot link... If it does not open, <a href="' + data.deepLink + '" target="_blank" style="color: var(--blue); font-weight: 600;">click here to activate</a>.';
+            feedbackEl.classList.remove('hidden');
           }
+          window.open(data.deepLink, '_blank');
         } else {
-          alert('Could not generate bot activation link');
+          if (feedbackEl) {
+            feedbackEl.className = 'banner banner-error';
+            feedbackEl.textContent = data.error || 'Could not generate bot activation link.';
+            feedbackEl.classList.remove('hidden');
+          }
         }
       } catch (err) {
-        alert('Network error activating bot');
+        if (feedbackEl) {
+          feedbackEl.className = 'banner banner-error';
+          feedbackEl.textContent = 'Network error connecting to bot service.';
+          feedbackEl.classList.remove('hidden');
+        }
+      } finally {
+        if (btn) btn.disabled = false;
       }
     }
 
     async function handleToggleNotifications() {
+      const feedbackEl = document.getElementById('settings-bot-feedback');
       try {
         const statusRes = await apiFetch('/api/bot/status');
         const status = await statusRes.json();
+        if (!status.linked) {
+          if (feedbackEl) {
+            feedbackEl.className = 'banner banner-error';
+            feedbackEl.textContent = 'Please connect your Telegram bot before enabling notifications.';
+            feedbackEl.classList.remove('hidden');
+          }
+          return;
+        }
         const newSetting = !status.enabled;
         const res = await apiFetch('/api/bot/toggle-notifications', {
           method: 'POST',
@@ -2285,9 +2348,24 @@ export function renderMobileAppHtml(): string {
         });
         if (res.ok) {
           await refreshBotStatus();
+          if (feedbackEl) {
+            feedbackEl.className = 'banner banner-success';
+            feedbackEl.textContent = newSetting ? 'Result reminders enabled.' : 'Result reminders paused.';
+            feedbackEl.classList.remove('hidden');
+          }
+        } else {
+          if (feedbackEl) {
+            feedbackEl.className = 'banner banner-error';
+            feedbackEl.textContent = 'Failed to update notification setting.';
+            feedbackEl.classList.remove('hidden');
+          }
         }
       } catch (err) {
-        alert('Failed to toggle notifications');
+        if (feedbackEl) {
+          feedbackEl.className = 'banner banner-error';
+          feedbackEl.textContent = 'Network error updating preferences.';
+          feedbackEl.classList.remove('hidden');
+        }
       }
     }
 

@@ -74,7 +74,7 @@ async function main() {
   totalFailures.push(...settleRes.failures);
 
   // 8. Phase 5 Telegram Bot & Football Settler Unit Tests
-  const p5UnitRes = runPhase5UnitTests();
+  const p5UnitRes = await runPhase5UnitTests();
   totalTests += p5UnitRes.count;
   totalFailures.push(...p5UnitRes.failures);
 

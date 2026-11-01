@@ -11,11 +11,20 @@
  * 7. parseFixtureEvidence edge cases.
  */
 
-import { verifyWebhookSecret, generateCallbackNonce, verifyCallbackNonce } from '../../src/core/telegram-bot.ts';
+import {
+  verifyWebhookSecret,
+  generateCallbackNonce,
+  verifyCallbackNonce,
+  getBotUsername,
+  getCanonicalDomain,
+  isCanonicalDomain,
+  handleConnectedWebsite,
+  generateBotLinkToken,
+} from '../../src/core/telegram-bot.ts';
 import { verifyCronSecret, parseFixtureEvidence } from '../../src/core/football-settler.ts';
 import { adjudicateFootballPrediction } from '../../src/core/settlement.ts';
 
-export function runPhase5UnitTests(): { passed: boolean; count: number; failures: string[] } {
+export async function runPhase5UnitTests(): Promise<{ passed: boolean; count: number; failures: string[] }> {
   const failures: string[] = [];
   let count = 0;
 
@@ -263,12 +272,217 @@ export function runPhase5UnitTests(): { passed: boolean; count: number; failures
   assert(!approvedOutcomes.includes('VOID'), 'VOID cannot be manually submitted via telegram callback');
   assert(!approvedOutcomes.includes('PENDING'), 'PENDING cannot be submitted as settlement outcome');
 
+  // ============================================================
+  // Section 7: Bot Username Resolution & Configuration
+  // ============================================================
+  console.log('\n  [Section 7: Bot Username Resolution & Configuration]');
+
+  const origUsername = process.env.TELEGRAM_BOT_USERNAME;
+  const origName = process.env.TELEGRAM_BOT_NAME;
+
+  try {
+    // 1. Both unset
+    delete process.env.TELEGRAM_BOT_USERNAME;
+    delete process.env.TELEGRAM_BOT_NAME;
+    assert(getBotUsername() === null, 'getBotUsername returns null when neither variable is set');
+
+    let missingConfigErr = '';
+    try {
+      await generateBotLinkToken('test-user');
+    } catch (e: any) {
+      missingConfigErr = e.message;
+    }
+    assert(missingConfigErr.includes('not configured'), 'generateBotLinkToken throws clear error when unconfigured');
+
+    // 2. TELEGRAM_BOT_USERNAME standard
+    process.env.TELEGRAM_BOT_USERNAME = 'WhoWasRightBot';
+    assert(getBotUsername() === 'WhoWasRightBot', 'getBotUsername reads TELEGRAM_BOT_USERNAME');
+
+    // 3. TELEGRAM_BOT_NAME fallback
+    delete process.env.TELEGRAM_BOT_USERNAME;
+    process.env.TELEGRAM_BOT_NAME = 'CustomBot';
+    assert(getBotUsername() === 'CustomBot', 'getBotUsername falls back to TELEGRAM_BOT_NAME');
+
+    // 4. Leading @ normalization
+    process.env.TELEGRAM_BOT_NAME = '@PrefixedBot';
+    assert(getBotUsername() === 'PrefixedBot', 'Leading @ is stripped cleanly');
+
+    // 5. Whitespace and multiple @ normalization
+    process.env.TELEGRAM_BOT_NAME = '  @@TrimmedBot  ';
+    assert(getBotUsername() === 'TrimmedBot', 'Surrounding whitespace and @ are trimmed');
+
+    // 6. Invalid username characters
+    process.env.TELEGRAM_BOT_NAME = 'invalid-bot-name!';
+    assert(getBotUsername() === null, 'Invalid bot username returns null');
+  } finally {
+    if (origUsername !== undefined) process.env.TELEGRAM_BOT_USERNAME = origUsername;
+    else delete process.env.TELEGRAM_BOT_USERNAME;
+    if (origName !== undefined) process.env.TELEGRAM_BOT_NAME = origName;
+    else delete process.env.TELEGRAM_BOT_NAME;
+  }
+
+  // ============================================================
+  // Section 8: Canonical Domain Verification
+  // ============================================================
+  console.log('\n  [Section 8: Canonical Domain Verification]');
+
+  const origAppUrl = process.env.APP_BASE_URL;
+  const origRenderUrl = process.env.RENDER_EXTERNAL_URL;
+
+  try {
+    delete process.env.APP_BASE_URL;
+    delete process.env.RENDER_EXTERNAL_URL;
+
+    assert(getCanonicalDomain() === 'whowasright.onrender.com', 'Default canonical domain is whowasright.onrender.com');
+    assert(isCanonicalDomain('whowasright.onrender.com') === true, 'Exact canonical domain matches');
+    assert(isCanonicalDomain('Whowasright.Onrender.Com') === true, 'Domain matching is case-insensitive');
+    assert(isCanonicalDomain('evil-phishing.com') === false, 'Non-matching domain rejected');
+    assert(isCanonicalDomain('') === false, 'Empty domain rejected');
+    assert(isCanonicalDomain(undefined) === false, 'Undefined domain rejected');
+
+    process.env.APP_BASE_URL = 'https://custom-journal.com';
+    assert(getCanonicalDomain() === 'custom-journal.com', 'APP_BASE_URL overrides canonical domain');
+    assert(isCanonicalDomain('custom-journal.com') === true, 'Configured custom domain matches');
+    assert(isCanonicalDomain('whowasright.onrender.com') === false, 'Old domain rejected when custom URL is set');
+  } finally {
+    if (origAppUrl !== undefined) process.env.APP_BASE_URL = origAppUrl;
+    else delete process.env.APP_BASE_URL;
+    if (origRenderUrl !== undefined) process.env.RENDER_EXTERNAL_URL = origRenderUrl;
+    else delete process.env.RENDER_EXTERNAL_URL;
+  }
+
+  // ============================================================
+  // Section 9: Connected-Website Event Invariants & State Machine
+  // ============================================================
+  console.log('\n  [Section 9: Connected-Website Event Invariants & State Machine]');
+
+  const testDomain = getCanonicalDomain();
+
+  // 1. Wrong domain is rejected early without DB access
+  const wrongDomainRes = await handleConnectedWebsite({
+    connected_website: 'attacker-site.com',
+    chat: { id: 12345, type: 'private' },
+  });
+  assert(wrongDomainRes.success === false, 'Wrong domain connected_website returns success: false');
+  assert(wrongDomainRes.ignored === true, 'Wrong domain connected_website is ignored');
+  assert(wrongDomainRes.reason === 'Domain mismatch', 'Reason is Domain mismatch');
+
+  // 2. Non-private chat is rejected early
+  const groupChatRes = await handleConnectedWebsite({
+    connected_website: testDomain,
+    chat: { id: 12345, type: 'group' },
+  });
+  assert(groupChatRes.success === false, 'Group chat connected_website returns success: false');
+  assert(groupChatRes.ignored === true, 'Group chat connected_website is ignored');
+  assert(groupChatRes.reason === 'Chat must be private', 'Reason is Chat must be private');
+
+  // 3. Missing or invalid chat ID rejected
+  const invalidChatRes = await handleConnectedWebsite({
+    connected_website: testDomain,
+    chat: { id: null as any, type: 'private' },
+  });
+  assert(invalidChatRes.success === false, 'Invalid chat id returns success: false');
+
+  // 4. State machine simulation: User lookup, conflict check, and preference preservation
+  interface MockUser { id: string; telegram_id: number; deleted_at: string | null }
+  interface MockBotLink { user_id: string; telegram_chat_id: number; enabled: boolean }
+
+  function simulateConnectedWebsite(
+    message: { connected_website?: string; chat?: { id: number; type: string } },
+    users: MockUser[],
+    botLinks: MockBotLink[]
+  ): { success: boolean; ignored?: boolean; reason?: string; alreadyLinked?: boolean; updatedLinks: MockBotLink[] } {
+    if (!isCanonicalDomain(message.connected_website)) {
+      return { success: false, ignored: true, reason: 'Domain mismatch', updatedLinks: botLinks };
+    }
+    if (!message.chat || message.chat.type !== 'private') {
+      return { success: false, ignored: true, reason: 'Chat must be private', updatedLinks: botLinks };
+    }
+    const chatId = message.chat.id;
+    const user = users.find(u => u.telegram_id === chatId && u.deleted_at === null);
+    if (!user) {
+      return { success: false, ignored: true, reason: 'User not found or deleted', updatedLinks: botLinks };
+    }
+    const conflict = botLinks.find(bl => bl.telegram_chat_id === chatId && bl.user_id !== user.id);
+    if (conflict) {
+      return { success: false, reason: 'Telegram chat already linked to a different account', updatedLinks: botLinks };
+    }
+    const existing = botLinks.find(bl => bl.user_id === user.id);
+    if (existing) {
+      if (existing.telegram_chat_id !== chatId) {
+        return { success: false, reason: 'Account already linked to a different Telegram chat', updatedLinks: botLinks };
+      }
+      return { success: true, alreadyLinked: true, updatedLinks: botLinks };
+    }
+    const newLinks = [...botLinks, { user_id: user.id, telegram_chat_id: chatId, enabled: true }];
+    return { success: true, alreadyLinked: false, updatedLinks: newLinks };
+  }
+
+  const mockUsers: MockUser[] = [
+    { id: 'user-1', telegram_id: 1001, deleted_at: null },
+    { id: 'user-2', telegram_id: 1002, deleted_at: '2026-10-31T00:00:00Z' },
+    { id: 'user-3', telegram_id: 1003, deleted_at: null },
+  ];
+
+  let currentLinks: MockBotLink[] = [];
+
+  // A. New valid link
+  const step1 = simulateConnectedWebsite(
+    { connected_website: testDomain, chat: { id: 1001, type: 'private' } },
+    mockUsers,
+    currentLinks
+  );
+  assert(step1.success === true, 'Valid connected_website succeeds for active user');
+  assert(step1.alreadyLinked === false, 'First connection is not alreadyLinked');
+  assert(step1.updatedLinks.find(l => l.user_id === 'user-1')?.enabled === true, 'New link initializes enabled = true');
+  currentLinks = step1.updatedLinks;
+
+  // B. User disables notifications
+  currentLinks = currentLinks.map(l => l.user_id === 'user-1' ? { ...l, enabled: false } : l);
+
+  // C. Repeated event for user-1 (Idempotency and preference preservation)
+  const step2 = simulateConnectedWebsite(
+    { connected_website: testDomain, chat: { id: 1001, type: 'private' } },
+    mockUsers,
+    currentLinks
+  );
+  assert(step2.success === true, 'Repeated connected_website event succeeds');
+  assert(step2.alreadyLinked === true, 'Repeated connected_website event flags alreadyLinked: true');
+  assert(step2.updatedLinks.find(l => l.user_id === 'user-1')?.enabled === false, 'Repeated event strictly preserves disabled notification preference');
+
+  // D. Deleted user is ignored
+  const step3 = simulateConnectedWebsite(
+    { connected_website: testDomain, chat: { id: 1002, type: 'private' } },
+    mockUsers,
+    currentLinks
+  );
+  assert(step3.success === false && step3.ignored === true, 'Deleted user is ignored and not linked');
+
+  // E. Unknown user is ignored
+  const step4 = simulateConnectedWebsite(
+    { connected_website: testDomain, chat: { id: 9999, type: 'private' } },
+    mockUsers,
+    currentLinks
+  );
+  assert(step4.success === false && step4.ignored === true, 'Unknown user is ignored and not linked');
+
+  // F. Cross-account reassignment prevention (chat 1001 attempted for user-3)
+  const maliciousUsers = [...mockUsers, { id: 'user-3', telegram_id: 1001, deleted_at: null }];
+  const step5 = simulateConnectedWebsite(
+    { connected_website: testDomain, chat: { id: 1001, type: 'private' } },
+    maliciousUsers.filter(u => u.id === 'user-3'),
+    currentLinks
+  );
+  assert(step5.success === false, 'Chat already bound to user-1 cannot be reassigned to user-3');
+  assert(step5.reason?.includes('already linked to a different account') === true, 'Appropriate cross-account error returned');
+
   return { passed: failures.length === 0, count, failures };
 }
 
 if (process.argv[1]?.replace(/\\/g, '/').endsWith('phase5-telegram-settler.test.ts')) {
-  const r = runPhase5UnitTests();
-  console.log(`\nPhase 5 Unit Tests: ${r.count - r.failures.length}/${r.count} passed.`);
-  process.exit(r.passed ? 0 : 1);
+  runPhase5UnitTests().then(r => {
+    console.log(`\nPhase 5 Unit Tests: ${r.count - r.failures.length}/${r.count} passed.`);
+    process.exit(r.passed ? 0 : 1);
+  });
 }
 

@@ -862,17 +862,24 @@ export function renderMobileAppHtml(): string {
       min-height: 100vh;
     }
 
-    /* Top App Bar */
+    /* Top App Bar (Fixed header pinned to top) */
     .top-bar {
-      position: sticky;
+      position: fixed;
       top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
       background: var(--card-bg);
       border-bottom: 1px solid var(--border);
-      padding: 12px 16px;
+      padding: 0 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       z-index: 40;
+    }
+
+    #app-content {
+      padding-top: 60px;
     }
     .logo {
       font-size: 18px;

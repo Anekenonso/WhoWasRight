@@ -414,7 +414,7 @@ export async function runPhase5UnitTests(): Promise<{ passed: boolean; count: nu
       }
       return { success: true, alreadyLinked: true, updatedLinks: botLinks };
     }
-    const newLinks = [...botLinks, { user_id: user.id, telegram_chat_id: chatId, enabled: true }];
+    const newLinks = [...botLinks, { user_id: user.id, telegram_chat_id: chatId, enabled: false }];
     return { success: true, alreadyLinked: false, updatedLinks: newLinks };
   }
 
@@ -426,7 +426,7 @@ export async function runPhase5UnitTests(): Promise<{ passed: boolean; count: nu
 
   let currentLinks: MockBotLink[] = [];
 
-  // A. New valid link
+  // A. New valid link initializes with enabled = false
   const step1 = simulateConnectedWebsite(
     { connected_website: testDomain, chat: { id: 1001, type: 'private' } },
     mockUsers,
@@ -434,13 +434,13 @@ export async function runPhase5UnitTests(): Promise<{ passed: boolean; count: nu
   );
   assert(step1.success === true, 'Valid connected_website succeeds for active user');
   assert(step1.alreadyLinked === false, 'First connection is not alreadyLinked');
-  assert(step1.updatedLinks.find(l => l.user_id === 'user-1')?.enabled === true, 'New link initializes enabled = true');
+  assert(step1.updatedLinks.find(l => l.user_id === 'user-1')?.enabled === false, 'New link initializes enabled = false (Settings opt-in required)');
   currentLinks = step1.updatedLinks;
 
-  // B. User disables notifications
-  currentLinks = currentLinks.map(l => l.user_id === 'user-1' ? { ...l, enabled: false } : l);
+  // B. User explicitly enables notifications via Settings toggle
+  currentLinks = currentLinks.map(l => l.user_id === 'user-1' ? { ...l, enabled: true } : l);
 
-  // C. Repeated event for user-1 (Idempotency and preference preservation)
+  // C. Repeated event for user-1 (Idempotency and preference preservation when enabled)
   const step2 = simulateConnectedWebsite(
     { connected_website: testDomain, chat: { id: 1001, type: 'private' } },
     mockUsers,
@@ -448,7 +448,17 @@ export async function runPhase5UnitTests(): Promise<{ passed: boolean; count: nu
   );
   assert(step2.success === true, 'Repeated connected_website event succeeds');
   assert(step2.alreadyLinked === true, 'Repeated connected_website event flags alreadyLinked: true');
-  assert(step2.updatedLinks.find(l => l.user_id === 'user-1')?.enabled === false, 'Repeated event strictly preserves disabled notification preference');
+  assert(step2.updatedLinks.find(l => l.user_id === 'user-1')?.enabled === true, 'Repeated event strictly preserves user-enabled notification preference');
+
+  // C2. User explicitly disables notifications via Settings toggle
+  currentLinks = currentLinks.map(l => l.user_id === 'user-1' ? { ...l, enabled: false } : l);
+
+  const step2b = simulateConnectedWebsite(
+    { connected_website: testDomain, chat: { id: 1001, type: 'private' } },
+    mockUsers,
+    currentLinks
+  );
+  assert(step2b.updatedLinks.find(l => l.user_id === 'user-1')?.enabled === false, 'Repeated event strictly preserves user-disabled notification preference');
 
   // D. Deleted user is ignored
   const step3 = simulateConnectedWebsite(

@@ -250,10 +250,10 @@ export async function handleConnectedWebsite(message: {
       return { success: true, alreadyLinked: true };
     }
 
-    // New link: initialize with enabled = true
+    // New link: initialize with enabled = false (Settings toggle is explicit opt-in)
     await client.query(
       `INSERT INTO bot_links (user_id, telegram_chat_id, enabled, linked_at, updated_at)
-       VALUES ($1, $2, TRUE, NOW(), NOW());`,
+       VALUES ($1, $2, FALSE, NOW(), NOW());`,
       [userId, telegramChatId]
     );
 

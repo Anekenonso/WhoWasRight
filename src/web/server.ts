@@ -341,9 +341,9 @@ export function createWebServer(): http.Server {
 
       if (pathname === '/api/account/delete' && method === 'POST') {
         const userId = await getUserIdFromRequest(req);
-        const result = await deleteUserAccount(userId);
+        await deleteUserAccount(userId);
         res.setHeader('Set-Cookie', 'session_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
-        return sendJson(res, 200, { success: true, isDemo: result.isDemo, message: 'Account deleted successfully' });
+        return sendJson(res, 200, { success: true, message: 'Account deleted successfully' });
       }
 
       // 1. Health check
@@ -1097,29 +1097,6 @@ export function renderMobileAppHtml(): string {
       margin-bottom: 16px;
     }
 
-    /* Smooth View Transitions */
-    .fade-in {
-      animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .spinner {
-      display: inline-block;
-      width: 14px;
-      height: 14px;
-      border: 2px solid var(--blue);
-      border-top-color: transparent;
-      border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      vertical-align: middle;
-      margin-right: 6px;
-    }
-
     .hidden { display: none !important; }
   </style>
 </head>
@@ -1156,9 +1133,6 @@ export function renderMobileAppHtml(): string {
         <button id="btn-demo-login" class="btn btn-outline btn-sm" onclick="handleDemoLogin()" style="width: auto; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 8px 16px; font-size: 13px; color: var(--slate);">
           Log in with a demo account
         </button>
-        <div style="font-size: 11px; color: var(--muted); margin-top: 6px;">
-          Launches an isolated sandbox pre-seeded with sample tipsters for evaluation.
-        </div>
       </div>
     </div>
   </div>
@@ -1611,14 +1585,8 @@ export function renderMobileAppHtml(): string {
     }
 
     function showAuthScreen(msg) {
-      const authEl = document.getElementById('screen-auth');
-      const appEl = document.getElementById('app-content');
-      appEl.classList.add('hidden');
-      authEl.classList.remove('hidden');
-      authEl.classList.remove('fade-in');
-      void authEl.offsetWidth;
-      authEl.classList.add('fade-in');
-
+      document.getElementById('screen-auth').classList.remove('hidden');
+      document.getElementById('app-content').classList.add('hidden');
       const banner = document.getElementById('auth-error-banner');
       const text = document.getElementById('auth-error-text');
       if (msg && banner && text) {
@@ -1635,14 +1603,8 @@ export function renderMobileAppHtml(): string {
     }
 
     function showAppScreen() {
-      const authEl = document.getElementById('screen-auth');
-      const appEl = document.getElementById('app-content');
-      authEl.classList.add('hidden');
-      appEl.classList.remove('hidden');
-      appEl.classList.remove('fade-in');
-      void appEl.offsetWidth;
-      appEl.classList.add('fade-in');
-
+      document.getElementById('screen-auth').classList.add('hidden');
+      document.getElementById('app-content').classList.remove('hidden');
       if (currentUser) {
         const usernameEl = document.getElementById('settings-username');
         if (usernameEl) {
@@ -1657,10 +1619,7 @@ export function renderMobileAppHtml(): string {
 
     async function handleDemoLogin() {
       const btn = document.getElementById('btn-demo-login');
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span> Starting demo sandbox...';
-      }
+      if (btn) btn.disabled = true;
       try {
         const res = await fetch('/api/auth/demo', {
           method: 'POST',
@@ -1678,10 +1637,7 @@ export function renderMobileAppHtml(): string {
       } catch (err) {
         showAuthScreen(err.message || 'Demo login failed');
       } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Log in with a demo account';
-        }
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -1722,22 +1678,15 @@ export function renderMobileAppHtml(): string {
 
     async function handleDeleteAccount() {
       if (confirm('Are you sure you want to delete your account? All private journal entries will be deleted.')) {
-        let isDemo = false;
         try {
-          const res = await apiFetch('/api/account/delete', { method: 'POST' });
-          const data = await res.json();
-          if (data && data.isDemo) isDemo = true;
+          await apiFetch('/api/account/delete', { method: 'POST' });
         } catch (e) {
           // Proceed to clear local state
         } finally {
           sessionStorage.removeItem(TOKEN_STORAGE_KEY);
           currentAuthToken = null;
           currentUser = null;
-          if (isDemo) {
-            showAuthScreen('Demo sandbox wiped. Click below to start a fresh demo session with sample data.');
-          } else {
-            showAuthScreen('Your account and private data have been deleted.');
-          }
+          showAuthScreen('Your account and private data have been deleted.');
         }
       }
     }

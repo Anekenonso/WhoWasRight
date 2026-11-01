@@ -172,57 +172,19 @@ export async function revokeSession(token: string): Promise<boolean> {
   return (res.rowCount ?? 0) > 0;
 }
 
-export interface DeleteAccountResult {
-  success: boolean;
-  isDemo: boolean;
-}
-
 /**
- * Permanently wipes user private records, revokes sessions, and marks user deleted.
- * For ephemeral demo sandboxes, purges the user row completely.
+ * Soft deletes user and revokes all active sessions
  */
-export async function deleteUserAccount(userId: string): Promise<DeleteAccountResult> {
+export async function deleteUserAccount(userId: string): Promise<boolean> {
   return withTransaction(async (client) => {
-    // 1. Detect if account is an ephemeral demo sandbox
-    const uRes = await client.query<{ telegram_id: string }>(
-      'SELECT telegram_id FROM users WHERE id = $1;',
-      [userId]
-    );
-    const isDemo = uRes.rows[0] ? Number(uRes.rows[0].telegram_id) < 0 : false;
-
-    // 2. Delete all sessions immediately
+    // 1. Delete all sessions
     await client.query('DELETE FROM sessions WHERE user_id = $1;', [userId]);
-
-    // 3. Delete bot notification links
-    await client.query('DELETE FROM bot_links WHERE user_id = $1;', [userId]);
-
-    // 4. Delete all predictions (cascades to outcome_events)
-    await client.query('DELETE FROM predictions WHERE user_id = $1;', [userId]);
-
-    // 5. Delete all analysts (cascades to analyst_aliases)
-    await client.query('DELETE FROM analysts WHERE user_id = $1;', [userId]);
-
-    // 6. Delete all events created by user
-    await client.query('DELETE FROM events WHERE user_id = $1;', [userId]);
-
-    // 7. Delete sequence allocation record
-    await client.query('DELETE FROM user_event_sequences WHERE user_id = $1;', [userId]);
-
-    // 8. Unlink receipts before deleting outbox to satisfy FK restrict
-    await client.query('UPDATE memory_receipts SET outbox_id = NULL WHERE user_id = $1;', [userId]);
-    await client.query('DELETE FROM memory_outbox WHERE user_id = $1;', [userId]);
-
-    // 9. If demo account, wipe user row; if real user, mark deleted_at
-    if (isDemo) {
-      await client.query('DELETE FROM users WHERE id = $1;', [userId]);
-    } else {
-      await client.query(`
-        UPDATE users SET deleted_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL;
-      `, [userId]);
-    }
-
-    return { success: true, isDemo };
+    // 2. Soft-delete user
+    const res = await client.query(`
+      UPDATE users SET deleted_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND deleted_at IS NULL;
+    `, [userId]);
+    return (res.rowCount ?? 0) > 0;
   });
 }
 

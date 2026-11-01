@@ -91,8 +91,12 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
       event_key: string;
       payload: string;
       attempts: number;
+      format_version?: number;
+      sequence_number?: string | number | null;
+      walrus_job_id?: string | null;
     }>(`
-      SELECT mo.id, mo.user_id, mo.event_key, mo.payload, mo.attempts
+      SELECT mo.id, mo.user_id, mo.event_key, mo.payload, mo.attempts,
+             mo.format_version, mo.sequence_number, mo.walrus_job_id
       FROM memory_outbox mo
       JOIN users u ON u.id = mo.user_id
       WHERE mo.status = 'PENDING'
@@ -135,38 +139,105 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
 
       const prefix = process.env.MEMWAL_NAMESPACE_PREFIX || 'wwr-';
       const namespace = `${prefix}${item.user_id}`;
+      const sequenceNumber = item.sequence_number ? Number(item.sequence_number) : parsed.sequenceNumber;
+
+      // 2a. Reconciliation: Check if a confirmed receipt already exists (avoids duplicate Walrus writes)
+      try {
+        const existingReceipt = await pool.query<{ job_id: string; blob_id: string; proof_reference: string | null }>(`
+          SELECT job_id, blob_id, proof_reference
+          FROM memory_receipts
+          WHERE outbox_id = $1
+             OR (user_id = $2 AND namespace = $3 AND sequence_number = $4)
+          LIMIT 1;
+        `, [item.id, item.user_id, namespace, sequenceNumber]);
+
+        if (existingReceipt.rows.length > 0) {
+          const r = existingReceipt.rows[0];
+          await withTransaction(async (txClient) => {
+            await txClient.query(`
+              UPDATE memory_receipts
+              SET outbox_id = COALESCE(outbox_id, $1)
+              WHERE user_id = $2 AND namespace = $3 AND sequence_number = $4;
+            `, [item.id, item.user_id, namespace, sequenceNumber]);
+
+            await txClient.query(`
+              UPDATE memory_outbox
+              SET status = 'CONFIRMED', walrus_job_id = $1, error_message = NULL, updated_at = NOW()
+              WHERE id = $2;
+            `, [r.job_id, item.id]);
+          });
+
+          result.confirmed++;
+          result.receipts.push({
+            id: item.id,
+            userId: item.user_id,
+            sequenceNumber,
+            jobId: r.job_id,
+            blobId: r.blob_id,
+          });
+          return;
+        }
+      } catch (recErr: any) {
+        // If table doesn't have outbox_id yet or query error, log and continue to Walrus submission
+        console.warn(`[WALRUS RECONCILIATION CHECK WARNING]:`, recErr?.message || recErr);
+      }
 
       try {
-        let jobId: string;
-        let blobId: string;
+        let jobId: string = '';
+        let blobId: string = '';
         let proofRef: string | null = null;
 
-        if (options.walrusClientOverride) {
-          // Used in unit/mock tests
-          const mockRes = await options.walrusClientOverride.rememberAndWait(item.payload, { timeoutMs: 30000 });
-          jobId = mockRes.job_id || mockRes.id || `mock-job-${Date.now()}`;
-          blobId = mockRes.blob_id || `mock-blob-${Date.now()}`;
-          proofRef = mockRes.owner || null;
-        } else {
-          // Live Walrus Mainnet Integration
-          const walrus = getWalrusClientForUser(item.user_id);
-          const writeRes = await walrus.rememberAndWait(item.payload, { timeoutMs: 120000 });
-          jobId = writeRes.job_id || writeRes.id;
-          blobId = writeRes.blob_id;
-          proofRef = writeRes.owner || null;
+        // 2b. If walrus_job_id was already recorded, await its confirmation rather than resending
+        if (item.walrus_job_id) {
+          try {
+            if (options.walrusClientOverride?.waitForRememberJob) {
+              const pollRes = await options.walrusClientOverride.waitForRememberJob(item.walrus_job_id);
+              jobId = pollRes.job_id || pollRes.id || item.walrus_job_id;
+              blobId = pollRes.blob_id;
+              proofRef = pollRes.owner || null;
+            } else if (!options.walrusClientOverride) {
+              const walrus = getWalrusClientForUser(item.user_id);
+              const pollRes = await walrus.waitForRememberJob(item.walrus_job_id, { timeoutMs: 120000 });
+              jobId = pollRes.job_id || pollRes.id || item.walrus_job_id;
+              blobId = pollRes.blob_id;
+              proofRef = pollRes.owner || null;
+            }
+          } catch (pollErr: any) {
+            console.warn(`[WALRUS RESUME JOB WARNING for ${item.walrus_job_id}]:`, pollErr?.message || pollErr);
+          }
+        }
+
+        // 2c. Write to Walrus if not resolved from resumed job
+        if (!jobId || !blobId) {
+          if (options.walrusClientOverride) {
+            // Used in unit/mock tests
+            const mockRes = await options.walrusClientOverride.rememberAndWait(item.payload, { timeoutMs: 30000 });
+            jobId = mockRes.job_id || mockRes.id || `mock-job-${Date.now()}`;
+            blobId = mockRes.blob_id || `mock-blob-${Date.now()}`;
+            proofRef = mockRes.owner || null;
+          } else {
+            // Live Walrus Mainnet Integration
+            const walrus = getWalrusClientForUser(item.user_id);
+            const writeRes = await walrus.rememberAndWait(item.payload, { timeoutMs: 120000 });
+            jobId = writeRes.job_id || writeRes.id;
+            blobId = writeRes.blob_id;
+            proofRef = writeRes.owner || null;
+          }
         }
 
         // 3. Atomically record confirmed receipt and update outbox status to CONFIRMED
         await withTransaction(async (txClient) => {
-          // Insert receipt (idempotent ON CONFLICT)
+          // Insert receipt with outbox_id (idempotent ON CONFLICT)
           await txClient.query(`
             INSERT INTO memory_receipts (
-              user_id, namespace, sequence_number, event_type, job_id, blob_id, proof_reference, confirmed_at
+              user_id, namespace, sequence_number, event_type, job_id, blob_id, proof_reference, confirmed_at, outbox_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), $8)
             ON CONFLICT (user_id, namespace, sequence_number) DO UPDATE
-            SET blob_id = EXCLUDED.blob_id, job_id = EXCLUDED.job_id;
-          `, [item.user_id, namespace, parsed.sequenceNumber, parsed.eventType, jobId, blobId, proofRef]);
+            SET blob_id = EXCLUDED.blob_id,
+                job_id = EXCLUDED.job_id,
+                outbox_id = COALESCE(memory_receipts.outbox_id, EXCLUDED.outbox_id);
+          `, [item.user_id, namespace, sequenceNumber, parsed.eventType, jobId, blobId, proofRef, item.id]);
 
           // Update outbox status to CONFIRMED
           await txClient.query(`
@@ -180,7 +251,7 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
         result.receipts.push({
           id: item.id,
           userId: item.user_id,
-          sequenceNumber: parsed.sequenceNumber,
+          sequenceNumber,
           jobId,
           blobId,
         });
@@ -199,8 +270,8 @@ export async function processMemoryOutbox(options: OutboxWorkerOptions = {}): Pr
           `, [nextAttempts, errorMsg, item.id]);
           result.failed++;
         } else {
-          // Exponential backoff: 2^attempts seconds (1s, 2s, 4s, 8s...)
-          const backoffSeconds = Math.pow(2, nextAttempts);
+          // Bounded exponential backoff: min(2^attempts, 300) seconds
+          const backoffSeconds = Math.min(Math.pow(2, nextAttempts), 300);
           await pool.query(`
             UPDATE memory_outbox
             SET status = 'PENDING', attempts = $1, error_message = $2,
@@ -299,4 +370,51 @@ export async function resetFailedOutboxItem(id: string): Promise<boolean> {
   `, [id]);
 
   return (res.rowCount || 0) > 0;
+}
+
+export interface OutboxStatusSummary {
+  synced: number;     // CONFIRMED
+  pending: number;    // PENDING
+  inFlight: number;   // IN_FLIGHT
+  failed: number;     // FAILED
+  total: number;
+}
+
+/**
+ * Returns explicit summary counts of outbox states (synced, pending, failed)
+ */
+export async function getOutboxStatusSummary(userId?: string): Promise<OutboxStatusSummary> {
+  const pool = getDbPool();
+  const params: any[] = [];
+  let userCondition = '';
+  if (userId) {
+    params.push(userId);
+    userCondition = 'WHERE user_id = $1';
+  }
+
+  const res = await pool.query<{ status: string; count: string }>(`
+    SELECT status, COUNT(*)::text AS count
+    FROM memory_outbox
+    ${userCondition}
+    GROUP BY status;
+  `, params);
+
+  const summary: OutboxStatusSummary = {
+    synced: 0,
+    pending: 0,
+    inFlight: 0,
+    failed: 0,
+    total: 0,
+  };
+
+  for (const row of res.rows) {
+    const count = parseInt(row.count, 10);
+    summary.total += count;
+    if (row.status === 'CONFIRMED') summary.synced += count;
+    else if (row.status === 'PENDING') summary.pending += count;
+    else if (row.status === 'IN_FLIGHT') summary.inFlight += count;
+    else if (row.status === 'FAILED') summary.failed += count;
+  }
+
+  return summary;
 }

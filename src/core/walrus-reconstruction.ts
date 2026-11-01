@@ -120,6 +120,20 @@ export function reconstructFromWalrusMemories(
         predictions[p.predictionId].verification = p.verification || 'UNVERIFIED';
         predictions[p.predictionId].correctedAt = p.settledAt || p.correctedAt;
       }
+    } else if (ev.eventType === 'SNAPSHOT') {
+      if (p.predictions && Array.isArray(p.predictions)) {
+        for (const snapPred of p.predictions) {
+          predictions[snapPred.predictionId] = {
+            predictionId: snapPred.predictionId,
+            analystId: ev.analystId,
+            market: snapPred.market,
+            selection: snapPred.selection,
+            outcome: snapPred.outcome || 'PENDING',
+            verification: snapPred.verification || 'UNVERIFIED',
+            createdAt: snapPred.createdAt || p.timestamp,
+          };
+        }
+      }
     }
   }
 

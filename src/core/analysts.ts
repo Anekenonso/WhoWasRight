@@ -12,6 +12,7 @@
 
 import { query, withTransaction } from './db.ts';
 import { formatStructuredMemory } from './crypto.ts';
+import { allocateNextEventSequence } from './sequence-allocator.ts';
 import { computeCredibility, type CredibilityScorecard } from './credibility.ts';
 import { reconstructUserHistoryFromWalrus } from './walrus-outbox-worker.ts';
 
@@ -205,11 +206,12 @@ export async function mergeAnalysts(
       VALUES ($1, $2, $3);
     `, [userId, sourceAnalystId, targetAnalystId]);
 
-    // 7. Log Walrus Outbox Event
+    // 7. Transaction-safe V2 sequence allocation & Walrus Outbox Event
+    const nextSeq = await allocateNextEventSequence(client, userId);
     const memoryString = formatStructuredMemory({
       analystId: targetAnalystId,
       eventType: 'ANALYST_MERGED',
-      sequenceNumber: Date.now(),
+      sequenceNumber: nextSeq,
       payload: {
         action: 'MERGE',
         sourceAnalystId,
@@ -219,9 +221,9 @@ export async function mergeAnalysts(
     });
 
     await client.query(`
-      INSERT INTO memory_outbox (user_id, event_key, payload, status)
-      VALUES ($1, $2, $3, 'PENDING');
-    `, [userId, `merge-${sourceAnalystId}-${Date.now()}`, memoryString]);
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, $2, $3, 'PENDING', 2, $4);
+    `, [userId, `merge-${sourceAnalystId}-${Date.now()}`, memoryString, nextSeq]);
 
     return {
       success: true,
@@ -264,11 +266,12 @@ export async function unmergeAnalyst(
       WHERE source_analyst_id = $1 AND reversed_at IS NULL;
     `, [sourceAnalystId]);
 
-    // 3. Log Outbox Event
+    // 3. Transaction-safe V2 sequence allocation & Outbox Event
+    const nextSeq = await allocateNextEventSequence(client, userId);
     const memoryString = formatStructuredMemory({
       analystId: sourceAnalystId,
       eventType: 'ANALYST_MERGED',
-      sequenceNumber: Date.now(),
+      sequenceNumber: nextSeq,
       payload: {
         action: 'UNMERGE',
         sourceAnalystId,
@@ -278,13 +281,80 @@ export async function unmergeAnalyst(
     });
 
     await client.query(`
-      INSERT INTO memory_outbox (user_id, event_key, payload, status)
-      VALUES ($1, $2, $3, 'PENDING');
-    `, [userId, `unmerge-${sourceAnalystId}-${Date.now()}`, memoryString]);
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, $2, $3, 'PENDING', 2, $4);
+    `, [userId, `unmerge-${sourceAnalystId}-${Date.now()}`, memoryString, nextSeq]);
 
     return {
       success: true,
       restoredId: sourceAnalystId,
+    };
+  });
+}
+
+/**
+ * Creates an immutable SNAPSHOT memory event of an analyst's current state.
+ */
+export async function createAnalystSnapshot(
+  userId: string,
+  analystId: string
+): Promise<{ snapshotId: string; sequenceNumber: number }> {
+  return withTransaction(async (client) => {
+    // 1. Verify analyst ownership
+    const aRes = await client.query<{ id: string; name: string }>(
+      'SELECT id, name FROM analysts WHERE id = $1 AND user_id = $2;',
+      [analystId, userId]
+    );
+    if (aRes.rows.length === 0) {
+      throw new Error('Analyst not found or unauthorized');
+    }
+
+    // 2. Fetch settled predictions for this analyst
+    const pRes = await client.query<{
+      id: string;
+      market: string;
+      selection: string;
+      outcome: string;
+      verification: string;
+      created_at: string;
+    }>(`
+      SELECT id, market, selection, outcome, verification, created_at
+      FROM predictions
+      WHERE analyst_id = $1 AND user_id = $2
+      ORDER BY created_at ASC;
+    `, [analystId, userId]);
+
+    // 3. Allocate V2 sequence and format SNAPSHOT memory envelope
+    const nextSeq = await allocateNextEventSequence(client, userId);
+    const memoryString = formatStructuredMemory({
+      analystId,
+      eventType: 'SNAPSHOT',
+      sequenceNumber: nextSeq,
+      payload: {
+        analystId,
+        analystName: aRes.rows[0].name,
+        timestamp: new Date().toISOString(),
+        totalPredictions: pRes.rows.length,
+        predictions: pRes.rows.map(r => ({
+          predictionId: r.id,
+          market: r.market,
+          selection: r.selection,
+          outcome: r.outcome,
+          verification: r.verification,
+          createdAt: r.created_at,
+        })),
+      },
+    });
+
+    const eventKey = `snapshot-${analystId}-${Date.now()}`;
+    await client.query(`
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, $2, $3, 'PENDING', 2, $4);
+    `, [userId, eventKey, memoryString, nextSeq]);
+
+    return {
+      snapshotId: eventKey,
+      sequenceNumber: nextSeq,
     };
   });
 }

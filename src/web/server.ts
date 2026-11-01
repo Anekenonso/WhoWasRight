@@ -49,6 +49,7 @@ import {
   handleConnectedWebsite,
 } from '../core/telegram-bot.ts';
 import { verifyCronSecret, runSettlementCycle } from '../core/football-settler.ts';
+import { processMemoryOutbox, recoverStaleInFlightOutbox } from '../core/walrus-outbox-worker.ts';
 import { settlePrediction } from '../core/predictions.ts';
 
 // Authentication error for fail-closed request rejection
@@ -606,13 +607,37 @@ export function createWebServer(): http.Server {
         return sendJson(res, 200, { ok: true });
       }
 
-      // Cron: Football settlement + notification dispatch + demo session cleanup
+      // Cron: Football settlement + notification dispatch + Walrus V2 outbox sync + demo session cleanup
       if (pathname === '/api/cron/settle' && method === 'POST') {
         if (!verifyCronSecret(req.headers['authorization'])) {
           return sendJson(res, 401, { error: 'Unauthorized' });
         }
         const settlementResult = await runSettlementCycle();
         const notifResult = await processNotificationQueue();
+
+        let walrusOutboxResult: { processed: number; confirmed: number; failed: number; retried: number; recovered: number; error: string | null } = {
+          processed: 0,
+          confirmed: 0,
+          failed: 0,
+          retried: 0,
+          recovered: 0,
+          error: null,
+        };
+        try {
+          const recovered = await recoverStaleInFlightOutbox(5);
+          const outboxRes = await processMemoryOutbox({ batchSize: 20 });
+          walrusOutboxResult = {
+            processed: outboxRes.processed,
+            confirmed: outboxRes.confirmed,
+            failed: outboxRes.failed,
+            retried: outboxRes.retried,
+            recovered,
+            error: null,
+          };
+        } catch (err: any) {
+          walrusOutboxResult.error = err.message || 'Walrus outbox processing failed';
+          console.error('[CRON] Walrus outbox worker non-blocking error:', err);
+        }
 
         let demoCleanupResult: { cleaned: number; error: string | null } = { cleaned: 0, error: null };
         try {
@@ -626,6 +651,7 @@ export function createWebServer(): http.Server {
         return sendJson(res, 200, {
           settlement: settlementResult,
           notifications: notifResult,
+          walrusOutbox: walrusOutboxResult,
           demoCleanup: demoCleanupResult,
         });
       }

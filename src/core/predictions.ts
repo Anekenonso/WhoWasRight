@@ -11,6 +11,7 @@
 
 import { query, withTransaction } from './db.ts';
 import { formatStructuredMemory } from './crypto.ts';
+import { allocateNextEventSequence } from './sequence-allocator.ts';
 
 export type PredictionOutcome = 'PENDING' | 'WON' | 'LOST' | 'PUSH' | 'VOID' | 'UNSUPPORTED_REQUIRES_MANUAL';
 export type VerificationType = 'API_VERIFIED' | 'SELF_REPORTED' | 'UNVERIFIED';
@@ -134,13 +135,8 @@ export async function createPrediction(params: CreatePredictionParams): Promise<
 
     const prediction = predRes.rows[0];
 
-    // 5. Sequence number generation for outbox
-    const seqRes = await client.query<{ next_seq: string }>(`
-      SELECT COALESCE(MAX(sequence_number), 0) + 1 AS next_seq
-      FROM memory_receipts
-      WHERE user_id = $1;
-    `, [params.userId]);
-    const nextSeq = parseInt(seqRes.rows[0].next_seq, 10);
+    // 5. Transaction-safe V2 sequence number allocation for outbox
+    const nextSeq = await allocateNextEventSequence(client, params.userId);
 
     // 6. Format Structured Memory Envelope
     const memoryString = formatStructuredMemory({
@@ -156,12 +152,12 @@ export async function createPrediction(params: CreatePredictionParams): Promise<
       },
     });
 
-    // 7. Insert Transactional Outbox Record
+    // 7. Insert Transactional Outbox Record (V2 format with positive sequence number)
     const eventKey = `pred-create-${prediction.id}`;
     await client.query(`
-      INSERT INTO memory_outbox (user_id, event_key, payload, status)
-      VALUES ($1, $2, $3, 'PENDING');
-    `, [params.userId, eventKey, memoryString]);
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, $2, $3, 'PENDING', 2, $4);
+    `, [params.userId, eventKey, memoryString, nextSeq]);
 
     return prediction;
   });
@@ -212,13 +208,8 @@ export async function settlePrediction(params: SettlePredictionParams): Promise<
       VALUES ($1, $2, $3, $4, $5);
     `, [params.predictionId, oldOutcome, params.newOutcome, params.source, JSON.stringify(params.evidenceJson || {})]);
 
-    // 4. Sequence number for outbox
-    const seqRes = await client.query<{ next_seq: string }>(`
-      SELECT COALESCE(MAX(sequence_number), 0) + 1 AS next_seq
-      FROM memory_receipts
-      WHERE user_id = $1;
-    `, [params.userId]);
-    const nextSeq = parseInt(seqRes.rows[0].next_seq, 10);
+    // 4. Transaction-safe V2 sequence number allocation for outbox
+    const nextSeq = await allocateNextEventSequence(client, params.userId);
 
     // 5. Format Structured Memory Envelope for Settlement
     const memoryString = formatStructuredMemory({
@@ -238,12 +229,12 @@ export async function settlePrediction(params: SettlePredictionParams): Promise<
       },
     });
 
-    // 6. Append to Outbox
+    // 6. Append to Outbox (V2 format with positive sequence number)
     const eventKey = `pred-settle-${current.id}-${Date.now()}`;
     await client.query(`
-      INSERT INTO memory_outbox (user_id, event_key, payload, status)
-      VALUES ($1, $2, $3, 'PENDING');
-    `, [params.userId, eventKey, memoryString]);
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, $2, $3, 'PENDING', 2, $4);
+    `, [params.userId, eventKey, memoryString, nextSeq]);
 
     return updated;
   });
@@ -281,6 +272,7 @@ export async function getPredictionsForUser(
       CASE
         WHEN r.job_id IS NOT NULL THEN 'CONFIRMED'
         WHEN o.status = 'CONFIRMED' THEN 'CONFIRMED'
+        WHEN o.status = 'FAILED' THEN 'FAILED'
         ELSE 'PENDING'
       END AS walrus_sync_status
     FROM predictions p

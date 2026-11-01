@@ -18,6 +18,7 @@
 
 import { withTransaction, query } from './db.ts';
 import { formatStructuredMemory } from './crypto.ts';
+import { allocateNextEventSequence } from './sequence-allocator.ts';
 import type { PredictionOutcome, VerificationType } from './predictions.ts';
 
 export interface MatchScoreEvidence {
@@ -300,13 +301,8 @@ export async function executeAutomatedSettlement(params: {
       RETURNING id;
     `, [predictionId, 'PENDING', adj.outcome, JSON.stringify({ ...evidence, reason: adj.reason })]);
 
-    // 5. Outbox sequence & memory enqueue
-    const seqRes = await client.query<{ next_seq: string }>(`
-      SELECT COALESCE(MAX(sequence_number), 0) + 1 AS next_seq
-      FROM memory_receipts
-      WHERE user_id = $1;
-    `, [userId]);
-    const nextSeq = parseInt(seqRes.rows[0].next_seq, 10);
+    // 5. Transaction-safe V2 sequence allocation & memory outbox enqueue
+    const nextSeq = await allocateNextEventSequence(client, userId);
 
     const memoryString = formatStructuredMemory({
       analystId: prediction.analyst_id,
@@ -324,11 +320,11 @@ export async function executeAutomatedSettlement(params: {
 
     const eventKey = `pred-settle-${predictionId}`;
     await client.query(`
-      INSERT INTO memory_outbox (user_id, event_key, payload, status)
-      VALUES ($1, $2, $3, 'PENDING')
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, $2, $3, 'PENDING', 2, $4)
       ON CONFLICT (user_id, event_key) DO UPDATE
-      SET payload = EXCLUDED.payload, status = 'PENDING', updated_at = NOW();
-    `, [userId, eventKey, memoryString]);
+      SET payload = EXCLUDED.payload, status = 'PENDING', format_version = 2, sequence_number = EXCLUDED.sequence_number, updated_at = NOW();
+    `, [userId, eventKey, memoryString, nextSeq]);
 
     return {
       outcome: adj.outcome,

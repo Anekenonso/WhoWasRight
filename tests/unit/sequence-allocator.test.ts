@@ -40,7 +40,7 @@ export async function runSequenceAllocatorUnitTests(): Promise<{ passed: boolean
   assert(validateOutboxFormatInvariant(3, 1) === false, 'Unknown format version is invalid');
 
   // Section 2: Input Parameter Validation
-  const dummyClient = { query: async () => ({ rows: [] }) } as any;
+  const dummyClient = { query: async () => ({ rows: [] }), release: () => {} } as any;
 
   // Missing / invalid userId
   let caught = false;
@@ -62,11 +62,35 @@ export async function runSequenceAllocatorUnitTests(): Promise<{ passed: boolean
   }
   assert(caught, 'Throws on null client');
 
+  // Passing a Pool instead of a PoolClient (has totalCount) is rejected
+  const mockPool = { query: async () => ({ rows: [] }), release: () => {}, totalCount: 10 } as any;
+  caught = false;
+  try {
+    await allocateNextEventSequence(mockPool, 'user-123');
+  } catch (err: any) {
+    caught = true;
+    assert(err.message.includes('not a connection Pool'), 'Rejects pg.Pool instance at runtime');
+  }
+  assert(caught, 'Throws when connection Pool is provided');
+
+  // Passing an object without release() is rejected
+  const unreleasedClient = { query: async () => ({ rows: [] }) } as any;
+  caught = false;
+  try {
+    await allocateNextEventSequence(unreleasedClient, 'user-123');
+  } catch (err: any) {
+    caught = true;
+    assert(err.message.includes('not a connection Pool'), 'Rejects client without release function');
+  }
+  assert(caught, 'Throws on client without release method');
+
   // Section 3: Mock Transactional Allocation Lifecycle
   // Create an in-memory transactional mock of PostgreSQL client
   class MockTxClient {
     public state: Map<string, number> = new Map();
     public queries: Array<{ sql: string; params: any[] }> = [];
+
+    release(): void {}
 
     async query(sql: string, params: any[] = []): Promise<any> {
       this.queries.push({ sql: sql.trim(), params });

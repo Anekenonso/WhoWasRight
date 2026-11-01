@@ -101,6 +101,7 @@ async function main() {
   const { runPhase5IntegrationTests } = await import('./integration/phase5-settlement.test.ts');
   const { runAuthHardeningCorrectionsTests } = await import('./integration/auth-hardening-corrections.test.ts');
   const { runWalrusIntegrityFailClosedTests } = await import('./integration/walrus-integrity-fail-closed.test.ts');
+  const { runSequenceAllocatorIntegrationTests } = await import('./integration/sequence-allocator.test.ts');
 
   let dbCount = 0;
   let p2Count = 0;
@@ -110,6 +111,7 @@ async function main() {
   let p5IntCount = 0;
   let authHardeningCount = 0;
   let walrusIntegrityCount = 0;
+  let seqAllocCount = 0;
 
   async function runWithTransientRetry<T>(fn: () => Promise<T>): Promise<T> {
     try {
@@ -210,6 +212,17 @@ async function main() {
   } catch (err: unknown) {
     totalFailures.push(`Walrus Integrity Fail-Closed integration exception: ${(err as Error).message}`);
     console.error('Fatal Walrus Integrity Fail-Closed Integration Error:', err);
+  }
+
+  // 17. V2 Sequence Allocator Integration Tests
+  try {
+    const seqAllocRes = await runWithTransientRetry(() => runSequenceAllocatorIntegrationTests());
+    seqAllocCount = seqAllocRes.count;
+    totalTests += seqAllocRes.count;
+    totalFailures.push(...seqAllocRes.failures);
+  } catch (err: unknown) {
+    totalFailures.push(`Sequence Allocator integration exception: ${(err as Error).message}`);
+    console.error('Fatal Sequence Allocator Integration Error:', err);
   } finally {
     await closeDbPool();
   }
@@ -227,14 +240,17 @@ async function main() {
   console.log(`6. Daily Limits Unit Tests:                  ${dailyRes.count} tests`);
   console.log(`7. Football Settlement Unit Tests:           ${settleRes.count} tests`);
   console.log(`8. Phase 5 Unit Tests (Bot & Settler):       ${p5UnitRes.count} tests`);
-  console.log(`9. Database Domain Integration Tests:        ${dbCount} tests`);
-  console.log(`10. Phase 2 Record Slice Integration Tests:  ${p2Count} tests`);
-  console.log(`11. Web Server & UI Integration Tests:       ${webCount} tests`);
-  console.log(`12. Phase 3 Remember Slice Tests:            ${p3Count} tests`);
-  console.log(`13. Gate 3 Outbox Resilience Tests:          ${gate3Count} tests`);
-  console.log(`14. Phase 5 Integration Tests (Settlement):  ${p5IntCount} tests`);
-  console.log(`15. Auth Hardening & Demo Isolation Tests:    ${authHardeningCount} tests`);
-  console.log(`16. Walrus Integrity Fail-Closed Tests:       ${walrusIntegrityCount} tests`);
+  console.log(`9. Test Isolation Unit Tests:                ${isolationRes.count} tests`);
+  console.log(`10. V2 Sequence Allocator Unit Tests:        ${seqRes.count} tests`);
+  console.log(`11. Database Domain Integration Tests:       ${dbCount} tests`);
+  console.log(`12. Phase 2 Record Slice Integration Tests:  ${p2Count} tests`);
+  console.log(`13. Web Server & UI Integration Tests:       ${webCount} tests`);
+  console.log(`14. Phase 3 Remember Slice Tests:            ${p3Count} tests`);
+  console.log(`15. Gate 3 Outbox Resilience Tests:          ${gate3Count} tests`);
+  console.log(`16. Phase 5 Integration Tests (Settlement):  ${p5IntCount} tests`);
+  console.log(`17. Auth Hardening & Demo Isolation Tests:    ${authHardeningCount} tests`);
+  console.log(`18. Walrus Integrity Fail-Closed Tests:       ${walrusIntegrityCount} tests`);
+  console.log(`19. V2 Sequence Allocator Integration Tests: ${seqAllocCount} tests`);
   console.log('------------------------------------------------------------');
   console.log(`Total Invariants & Assertions Tested: ${totalTests}`);
   console.log(`Total Passed:                         ${passedCount}`);

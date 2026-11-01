@@ -104,38 +104,82 @@ export async function runSequenceAllocatorIntegrationTests(): Promise<{
   assert(isContiguous, '10 concurrent allocations produce contiguous sequences [1..10]');
 
   // Test 6: Database Check Constraint chk_outbox_format_sequence
-  // Case 6a: v1 with sequence_number must fail check constraint
-  let v1ViolationCaught = false;
-  try {
-    await query(`
-      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
-      VALUES ($1, 'test-v1-invalid', 'payload', 'PENDING', 1, 1);
-    `, [userAId]);
-  } catch (err: any) {
-    v1ViolationCaught = err.message.includes('chk_outbox_format_sequence');
-  }
-  assert(v1ViolationCaught, 'Check constraint rejects format_version=1 with non-null sequence_number');
-
-  // Case 6b: v2 with NULL sequence_number must fail check constraint
-  let v2NullViolationCaught = false;
-  try {
-    await query(`
-      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
-      VALUES ($1, 'test-v2-invalid-null', 'payload', 'PENDING', 2, NULL);
-    `, [userAId]);
-  } catch (err: any) {
-    v2NullViolationCaught = err.message.includes('chk_outbox_format_sequence');
-  }
-  assert(v2NullViolationCaught, 'Check constraint rejects format_version=2 with NULL sequence_number');
-
-  // Case 6c: v2 with positive sequence succeeds
-  const outboxRes = await query<{ id: string }>(`
+  // Case 6a: v1 with NULL sequence: accepted
+  const v1Res = await query<{ id: string }>(`
     INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
-    VALUES ($1, 'test-v2-valid-1', 'payload', 'PENDING', 2, 100)
+    VALUES ($1, 'test-v1-null-valid', 'payload', 'PENDING', 1, NULL)
     RETURNING id;
   `, [userAId]);
-  const outboxId = outboxRes.rows[0].id;
-  assert(!!outboxId, 'format_version=2 with positive sequence succeeds');
+  assert(!!v1Res.rows[0]?.id, 'v1 with NULL sequence: accepted');
+
+  // Case 6b: v1 with positive sequence: rejected
+  let v1PosCaught = false;
+  try {
+    await query(`
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, 'test-v1-pos-invalid', 'payload', 'PENDING', 1, 1);
+    `, [userAId]);
+  } catch (err: any) {
+    v1PosCaught = err.message.includes('chk_outbox_format_sequence');
+  }
+  assert(v1PosCaught, 'v1 with positive sequence: rejected');
+
+  // Case 6c: v2 with positive sequence: accepted
+  const v2Res = await query<{ id: string }>(`
+    INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+    VALUES ($1, 'test-v2-pos-valid', 'payload', 'PENDING', 2, 100)
+    RETURNING id;
+  `, [userAId]);
+  const outboxId = v2Res.rows[0]?.id;
+  assert(!!outboxId, 'v2 with positive sequence: accepted');
+
+  // Case 6d: v2 with NULL sequence: rejected
+  let v2NullCaught = false;
+  try {
+    await query(`
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, 'test-v2-null-invalid', 'payload', 'PENDING', 2, NULL);
+    `, [userAId]);
+  } catch (err: any) {
+    v2NullCaught = err.message.includes('chk_outbox_format_sequence');
+  }
+  assert(v2NullCaught, 'v2 with NULL sequence: rejected');
+
+  // Case 6e: v2 with zero sequence: rejected
+  let v2ZeroCaught = false;
+  try {
+    await query(`
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, 'test-v2-zero-invalid', 'payload', 'PENDING', 2, 0);
+    `, [userAId]);
+  } catch (err: any) {
+    v2ZeroCaught = err.message.includes('chk_outbox_format_sequence');
+  }
+  assert(v2ZeroCaught, 'v2 with zero sequence: rejected');
+
+  // Case 6f: v2 with negative sequence: rejected
+  let v2NegCaught = false;
+  try {
+    await query(`
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, 'test-v2-neg-invalid', 'payload', 'PENDING', 2, -1);
+    `, [userAId]);
+  } catch (err: any) {
+    v2NegCaught = err.message.includes('chk_outbox_format_sequence');
+  }
+  assert(v2NegCaught, 'v2 with negative sequence: rejected');
+
+  // Case 6g: Unsupported format version: rejected
+  let v3Caught = false;
+  try {
+    await query(`
+      INSERT INTO memory_outbox (user_id, event_key, payload, status, format_version, sequence_number)
+      VALUES ($1, 'test-v3-invalid', 'payload', 'PENDING', 3, 1);
+    `, [userAId]);
+  } catch (err: any) {
+    v3Caught = err.message.includes('chk_outbox_format_sequence');
+  }
+  assert(v3Caught, 'Unsupported format version: rejected');
 
   // Test 7: Partial unique index uq_memory_outbox_user_seq
   let outboxDupCaught = false;

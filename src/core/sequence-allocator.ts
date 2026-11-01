@@ -36,8 +36,13 @@ export function validateOutboxFormatInvariant(
 /**
  * Allocates the next monotonic sequence number for a user within an active transaction.
  *
- * Uses row-level locking via PostgreSQL UPDATE ... RETURNING to ensure concurrency safety.
- * If the user's sequence record does not exist yet, initializes next_sequence = 1.
+ * CRITICAL TRANSACTION CONTRACT:
+ * - Must be called with a transaction-scoped `pg.PoolClient` (e.g. inside `withTransaction(async (client) => ...)`).
+ * - A general connection pool (`pg.Pool`) is explicitly rejected at runtime to prevent atomicity breaks.
+ * - The caller MUST execute this allocation AND the corresponding `memory_outbox` insertion
+ *   within the exact same transaction on this `client`.
+ * - If the transaction rolls back, PostgreSQL rolls back the `user_event_sequences` counter,
+ *   guaranteeing zero consumed or skipped sequence numbers on failure.
  */
 export async function allocateNextEventSequence(
   client: pg.PoolClient,
@@ -47,8 +52,13 @@ export async function allocateNextEventSequence(
     throw new Error('Sequence allocation requires a valid non-empty userId');
   }
 
-  if (!client || typeof client.query !== 'function') {
-    throw new Error('Sequence allocation requires an active PostgreSQL transaction client');
+  if (
+    !client ||
+    typeof client.query !== 'function' ||
+    typeof (client as any).release !== 'function' ||
+    'totalCount' in client
+  ) {
+    throw new Error('Sequence allocation requires an active PostgreSQL transaction client (PoolClient), not a connection Pool');
   }
 
   // 1. Ensure the user counter row exists with next_sequence = 1
@@ -89,6 +99,15 @@ export async function getUserNextSequence(
 ): Promise<number | null> {
   if (!userId || typeof userId !== 'string') {
     throw new Error('Valid userId required');
+  }
+
+  if (
+    !client ||
+    typeof client.query !== 'function' ||
+    typeof (client as any).release !== 'function' ||
+    'totalCount' in client
+  ) {
+    throw new Error('Reading sequence requires an active PostgreSQL client (PoolClient), not a connection Pool');
   }
 
   const res = await client.query<{ next_sequence: string }>(`

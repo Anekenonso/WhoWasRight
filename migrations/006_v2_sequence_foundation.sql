@@ -30,7 +30,7 @@ ALTER TABLE memory_outbox
   ADD CONSTRAINT chk_outbox_format_sequence
   CHECK (
     (format_version = 1 AND sequence_number IS NULL) OR
-    (format_version = 2 AND sequence_number > 0)
+    (format_version = 2 AND sequence_number IS NOT NULL AND sequence_number > 0)
   );
 
 -- 4. Create partial unique index to enforce unique v2 sequence numbers per user

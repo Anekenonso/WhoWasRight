@@ -17,6 +17,7 @@
     "test:unit:football": "node --env-file-if-exists=.env tests/unit/football-cache.test.ts",
     "test:unit:paste": "node --env-file-if-exists=.env tests/unit/paste-parser.test.ts",
     "test:unit:daily": "node --env-file-if-exists=.env tests/unit/daily-limits.test.ts",
+    "test:unit:branding": "node --env-file-if-exists=.env tests/unit/branding.test.ts",
     "test:unit:settlement": "node --env-file-if-exists=.env tests/unit/settlement.test.ts",
     "test:unit:isolation": "node --env-file-if-exists=.env tests/unit/test-isolation.test.ts",
     "test:integration:phase2": "node --env-file-if-exists=.env tests/integration/phase2-record-slice.test.ts",

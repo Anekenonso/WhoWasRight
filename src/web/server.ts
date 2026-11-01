@@ -52,6 +52,7 @@ import { verifyCronSecret, runSettlementCycle } from '../core/football-settler.t
 import { processMemoryOutbox, recoverStaleInFlightOutbox } from '../core/walrus-outbox-worker.ts';
 import { settlePrediction } from '../core/predictions.ts';
 import { verifyWalrusOnchainAnchor } from '../core/tatum-verifier.ts';
+import { FAVICON_SVG, PWA_MANIFEST, LOGO_TOPBAR_SVG, LOGO_HERO_SVG } from './branding.ts';
 
 // Authentication error for fail-closed request rejection
 export class UnauthorizedError extends Error {
@@ -230,6 +231,27 @@ export function createWebServer(): http.Server {
     }
 
     try {
+      // -------------------------------------------------------------
+      // Static Branding Assets (Favicon, Web Manifest)
+      // -------------------------------------------------------------
+      if ((pathname === '/favicon.ico' || pathname === '/favicon.svg') && method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'image/svg+xml; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400',
+        });
+        res.end(FAVICON_SVG);
+        return;
+      }
+
+      if (pathname === '/manifest.json' && method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'application/manifest+json; charset=utf-8',
+          'Cache-Control': 'public, max-age=86400',
+        });
+        res.end(JSON.stringify(PWA_MANIFEST, null, 2));
+        return;
+      }
+
       // -------------------------------------------------------------
       // API ROUTES
       // -------------------------------------------------------------
@@ -767,6 +789,12 @@ export function renderMobileAppHtml(): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WhoWasRight — Private Sports Prediction Journal</title>
+  <meta name="description" content="Private sports prediction journal with cryptographically immutable credibility tracking.">
+  <meta name="theme-color" content="#0F172A">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="alternate icon" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1069,7 +1097,7 @@ export function renderMobileAppHtml(): string {
   <!-- Screen 0: Authentication / Login Screen (Shown when unauthenticated) -->
   <div id="screen-auth" class="container">
     <div class="card" style="text-align: center; padding: 24px 16px; margin-top: 16px;">
-      <div style="font-size: 36px; margin-bottom: 8px;">⚽ ⚖️</div>
+      ${LOGO_HERO_SVG}
       <h1 style="font-size: 20px; font-weight: 700; color: var(--navy); margin-bottom: 6px;">WhoWasRight</h1>
       <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5;">
         Private sports prediction journal with cryptographically immutable credibility tracking.
@@ -1105,6 +1133,7 @@ export function renderMobileAppHtml(): string {
   <!-- Top App Bar -->
   <div class="top-bar">
     <div class="logo">
+      ${LOGO_TOPBAR_SVG}
       <span>WhoWasRight</span>
       <span class="logo-badge">Journal</span>
     </div>

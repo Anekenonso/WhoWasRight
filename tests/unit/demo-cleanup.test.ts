@@ -9,6 +9,7 @@
  * 5. Telegram Login Widget HTML generation with valid, invalid, and missing TELEGRAM_BOT_NAME.
  */
 
+import vm from 'node:vm';
 import { cleanupExpiredDemoSessions, getDemoSessionTtlMinutes } from '../../src/core/demo-mode.ts';
 import { renderMobileAppHtml } from '../../src/web/server.ts';
 
@@ -265,6 +266,39 @@ export async function runDemoCleanupUnitTests(): Promise<{ passed: boolean; coun
       delete process.env.DEMO_SESSION_TTL_MINUTES;
     }
   }
+
+  // ============================================================
+  // Section 6: Client Script Syntax & Demo Auth Flow
+  // ============================================================
+  console.log('\n  [Section 6: Client Script Syntax & Demo Auth Flow]');
+
+  const clientHtml = renderMobileAppHtml();
+  const scriptMatch = clientHtml.match(/<script>([\s\S]*?)<\/script>/);
+
+  assert(!!scriptMatch && scriptMatch[1].length > 0, 'Client application script is embedded in HTML');
+
+  const clientScript = scriptMatch ? scriptMatch[1] : '';
+
+  // 1. Verify that the client script evaluates cleanly without any SyntaxError
+  let scriptParseError: string | null = null;
+  try {
+    new vm.Script(clientScript);
+  } catch (err: any) {
+    scriptParseError = err.message;
+  }
+  assert(scriptParseError === null, `Client script parses without SyntaxError (got: ${scriptParseError})`);
+
+  // 2. Verify critical demo login and navigation handlers exist
+  assert(clientScript.includes('function handleDemoLogin()'), 'Client script defines handleDemoLogin()');
+  assert(clientScript.includes("fetch('/api/auth/demo'"), 'handleDemoLogin invokes POST /api/auth/demo');
+  assert(clientScript.includes('sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token)'), 'handleDemoLogin persists demo token to sessionStorage');
+  assert(clientScript.includes('function showAppScreen()'), 'Client script defines showAppScreen()');
+  assert(clientScript.includes('function initializeAppViews()'), 'Client script defines initializeAppViews()');
+  assert(clientScript.includes("apiFetch('/api/auth/me')"), 'Client script restores session via GET /api/auth/me');
+
+  // 3. Verify no syntax-breaking empty string concatenations exist in onclick handlers
+  assert(!clientScript.includes("openAnalystDetail('' +"), 'Emitted script contains properly escaped quotes for openAnalystDetail');
+  assert(!clientScript.includes("openMergeModal('' +"), 'Emitted script contains properly escaped quotes for openMergeModal');
 
   return { passed: failures.length === 0, count, failures };
 }

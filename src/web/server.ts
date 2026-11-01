@@ -1935,7 +1935,7 @@ export function renderMobileAppHtml(): string {
                           tier === 'Poor' ? 'badge-poor' : 'badge-not-rated';
         const winRate = cred.winRate !== null && cred.winRate !== undefined ? cred.winRate + '%' : 'N/A';
         return '<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);">' +
-          '<div onclick="openAnalystDetail(\'' + a.id + '\')" style="cursor: pointer;">' +
+          '<div onclick="openAnalystDetail(\\\'' + a.id + '\\\')" style="cursor: pointer;">' +
             '<div style="font-weight: 600; font-size: 14px; color: var(--navy);">' + a.name + '</div>' +
             '<div style="font-size: 11px; color: var(--muted);">' + (cred.settledCount || 0) + ' settled · ' + winRate + ' win rate · ' + (cred.historyBadge || 'Insufficient') + '</div>' +
           '</div>' +
@@ -2016,7 +2016,7 @@ export function renderMobileAppHtml(): string {
 
         return '<div class="card">' +
           '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
-            '<div onclick="openAnalystDetail(\'' + a.id + '\')" style="cursor: pointer; flex: 1;">' +
+            '<div onclick="openAnalystDetail(\\\'' + a.id + '\\\')" style="cursor: pointer; flex: 1;">' +
               '<div style="font-weight: 700; font-size: 15px; color: var(--blue);">' + a.name + ' →</div>' +
               '<div style="font-size: 12px; color: var(--muted);">' + aliases + '</div>' +
             '</div>' +
@@ -2030,8 +2030,8 @@ export function renderMobileAppHtml(): string {
           '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">' +
             '<div style="font-size: 11px; color: var(--muted);">' + (cred.apiVerifiedCount || 0) + ' API · ' + (cred.selfReportedCount || 0) + ' Self</div>' +
             '<div style="display: flex; gap: 6px;">' +
-              '<button class="btn btn-outline btn-sm" onclick="openAnalystDetail(\'' + a.id + '\')">View Details</button>' +
-              '<button class="btn btn-outline btn-sm" onclick="openMergeModal(\'' + a.id + '\', \'' + a.name + '\')">Merge...</button>' +
+              '<button class="btn btn-outline btn-sm" onclick="openAnalystDetail(\\\'' + a.id + '\\\')">View Details</button>' +
+              '<button class="btn btn-outline btn-sm" onclick="openMergeModal(\\\'' + a.id + '\\\', \\\'' + a.name + '\\\')">Merge...</button>' +
             '</div>' +
           '</div>' +
         '</div>';

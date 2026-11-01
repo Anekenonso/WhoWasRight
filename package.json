@@ -15,6 +15,7 @@
     "test:unit:paste": "node --env-file-if-exists=.env tests/unit/paste-parser.test.ts",
     "test:unit:daily": "node --env-file-if-exists=.env tests/unit/daily-limits.test.ts",
     "test:unit:settlement": "node --env-file-if-exists=.env tests/unit/settlement.test.ts",
+    "test:unit:isolation": "node --env-file-if-exists=.env tests/unit/test-isolation.test.ts",
     "test:integration:phase2": "node --env-file-if-exists=.env tests/integration/phase2-record-slice.test.ts",
     "test:integration:phase3": "node --env-file-if-exists=.env tests/integration/phase3-remember-slice.test.ts",
     "test:integration:web": "node --env-file-if-exists=.env tests/integration/web-server.test.ts",

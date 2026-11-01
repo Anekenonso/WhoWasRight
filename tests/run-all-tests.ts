@@ -22,6 +22,7 @@ import { runPasteParserUnitTests } from './unit/paste-parser.test.ts';
 import { runDailyLimitsUnitTests } from './unit/daily-limits.test.ts';
 import { runSettlementUnitTests } from './unit/settlement.test.ts';
 import { runPhase5UnitTests } from './unit/phase5-telegram-settler.test.ts';
+import { runTestIsolationUnitTests } from './unit/test-isolation.test.ts';
 import { enforceTestDatabaseIsolation } from '../src/core/test-isolation.ts';
 import { closeDbPool } from '../src/core/db.ts';
 
@@ -74,6 +75,11 @@ async function main() {
   const p5UnitRes = runPhase5UnitTests();
   totalTests += p5UnitRes.count;
   totalFailures.push(...p5UnitRes.failures);
+
+  // 9. Test Database Isolation & Identity Policy Unit Tests
+  const isolationRes = runTestIsolationUnitTests();
+  totalTests += isolationRes.count;
+  totalFailures.push(...isolationRes.failures);
 
   // Enforce strict test database isolation before loading integration tests
   console.log('\n--- Enforcing Test Database Isolation Guard ---');

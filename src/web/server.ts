@@ -831,6 +831,26 @@ export function renderMobileAppHtml(): string {
       margin: 0;
       padding: 0;
       -webkit-tap-highlight-color: transparent;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+
+    html, body {
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
+    }
+
+    /* Hide scrollbars across all rendering engines */
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar,
+    *::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      background: transparent !important;
     }
 
     body {
@@ -1072,9 +1092,16 @@ export function renderMobileAppHtml(): string {
       max-width: 480px;
       max-height: 85vh;
       overflow-y: auto;
+      scrollbar-width: none !important;
+      -ms-overflow-style: none !important;
       padding: 20px 16px;
       transform: translateY(100%);
       transition: transform 0.25s ease-out;
+    }
+    .modal-content::-webkit-scrollbar {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
     }
     .modal-overlay.open .modal-content {
       transform: translateY(0);

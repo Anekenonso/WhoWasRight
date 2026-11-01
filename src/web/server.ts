@@ -805,7 +805,7 @@ export function renderMobileAppHtml(): string {
   <link rel="manifest" href="/manifest.json">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #F8FAFC;
@@ -814,7 +814,6 @@ export function renderMobileAppHtml(): string {
       --slate: #334155;
       --muted: #64748B;
       --border: #E2E8F0;
-      --border-subtle: #F1F5F9;
       --blue: #2563EB;
       --blue-hover: #1D4ED8;
       --blue-light: #EFF6FF;
@@ -824,12 +823,7 @@ export function renderMobileAppHtml(): string {
       --red-light: #FEF2F2;
       --amber: #D97706;
       --amber-light: #FFFBEB;
-      --radius: 14px;
-      --radius-sm: 8px;
-      --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
-      --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.06), 0 2px 4px -2px rgba(15, 23, 42, 0.02);
-      --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+      --radius: 12px;
     }
 
     * {
@@ -840,19 +834,19 @@ export function renderMobileAppHtml(): string {
     }
 
     body {
-      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background-color: var(--bg);
       color: var(--navy);
       line-height: 1.5;
-      padding-bottom: 84px; /* Generous space for floating bottom nav */
-      min-height: 100dvh;
+      padding-bottom: 74px; /* Space for bottom nav */
+      min-height: 100vh;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       text-rendering: optimizeLegibility;
     }
 
     h1, h2, h3, .card-title {
-      letter-spacing: -0.025em;
+      letter-spacing: -0.02em;
       text-wrap: balance;
     }
 
@@ -868,35 +862,29 @@ export function renderMobileAppHtml(): string {
     .top-bar {
       position: sticky;
       top: 0;
-      background: rgba(255, 255, 255, 0.92);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
+      background: var(--card-bg);
       border-bottom: 1px solid var(--border);
       padding: 12px 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       z-index: 40;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
     }
     .logo {
-      font-size: 17px;
+      font-size: 18px;
       font-weight: 700;
       color: var(--navy);
       display: flex;
       align-items: center;
-      gap: 8px;
-      letter-spacing: -0.02em;
+      gap: 6px;
     }
     .logo-badge {
       background: var(--blue-light);
       color: var(--blue);
-      border: 1px solid #BFDBFE;
       font-size: 11px;
       font-weight: 600;
-      padding: 2px 7px;
+      padding: 2px 6px;
       border-radius: 6px;
-      letter-spacing: 0.02em;
     }
 
     /* Container */
@@ -911,16 +899,15 @@ export function renderMobileAppHtml(): string {
       background: var(--card-bg);
       border-radius: var(--radius);
       border: 1px solid var(--border);
-      padding: 18px 16px;
+      padding: 16px;
       margin-bottom: 16px;
-      box-shadow: var(--shadow-sm);
-      transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
     .card-title {
       font-size: 15px;
-      font-weight: 700;
+      font-weight: 600;
       color: var(--navy);
-      margin-bottom: 14px;
+      margin-bottom: 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -936,40 +923,26 @@ export function renderMobileAppHtml(): string {
       padding: 0 18px;
       font-size: 14px;
       font-weight: 600;
-      font-family: inherit;
-      border-radius: var(--radius-sm);
+      border-radius: 8px;
       border: none;
       cursor: pointer;
       text-decoration: none;
-      transition: all 0.2s var(--ease-out);
-      letter-spacing: -0.01em;
-      outline: none;
-    }
-    .btn:active {
-      transform: scale(0.98);
-    }
-    .btn:focus-visible {
-      outline: 2px solid var(--blue);
-      outline-offset: 2px;
+      transition: background 0.15s ease;
     }
     .btn-primary {
       background: var(--blue);
       color: #FFFFFF;
       width: 100%;
-      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
     }
     .btn-primary:hover {
       background: var(--blue-hover);
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
     }
     .btn-secondary {
-      background: var(--border-subtle);
+      background: var(--border);
       color: var(--slate);
-      border: 1px solid var(--border);
     }
     .btn-secondary:hover {
-      background: var(--border);
-      color: var(--navy);
+      background: #CBD5E1;
     }
     .btn-outline {
       background: transparent;
@@ -978,59 +951,50 @@ export function renderMobileAppHtml(): string {
     }
     .btn-outline:hover {
       background: var(--bg);
-      border-color: #CBD5E1;
-      color: var(--navy);
     }
     .btn-sm {
-      min-height: 38px;
-      padding: 0 14px;
+      min-height: 36px;
+      padding: 0 12px;
       font-size: 13px;
-      border-radius: 6px;
     }
 
     /* Form Inputs (Minimum 44px height) */
     .form-group {
-      margin-bottom: 15px;
+      margin-bottom: 14px;
     }
     .label {
       display: block;
       font-size: 13px;
-      font-weight: 600;
+      font-weight: 500;
       color: var(--slate);
       margin-bottom: 6px;
-      letter-spacing: -0.01em;
     }
     .input, .select, .textarea {
       width: 100%;
       min-height: 44px;
-      padding: 10px 14px;
+      padding: 10px 12px;
       font-size: 14px;
       font-family: inherit;
       color: var(--navy);
       background: #FFFFFF;
       border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
+      border-radius: 8px;
       outline: none;
-      transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out);
+      transition: border 0.15s;
     }
     .input:focus, .select:focus, .textarea:focus {
       border-color: var(--blue);
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-    }
-    .input::placeholder {
-      color: #94A3B8;
     }
 
     /* Banners & Alerts */
     .banner {
       padding: 12px 14px;
-      border-radius: var(--radius-sm);
+      border-radius: 8px;
       font-size: 13px;
       margin-bottom: 16px;
       display: flex;
       align-items: flex-start;
       gap: 10px;
-      line-height: 1.45;
     }
     .banner-warning {
       background: var(--amber-light);
@@ -1054,20 +1018,17 @@ export function renderMobileAppHtml(): string {
       align-items: center;
       font-size: 11px;
       font-weight: 600;
-      padding: 3px 9px;
-      border-radius: 9999px;
-      letter-spacing: 0.01em;
-      border: 1px solid transparent;
-      font-variant-numeric: tabular-nums;
+      padding: 2px 8px;
+      border-radius: 12px;
     }
-    .badge-good { background: #DCFCE7; color: #166534; border-color: #BBF7D0; }
-    .badge-average { background: #FEF3C7; color: #92400E; border-color: #FDE68A; }
-    .badge-poor { background: #FEE2E2; color: #991B1B; border-color: #FECACA; }
-    .badge-not-rated { background: #F1F5F9; color: #64748B; border-color: #E2E8F0; }
-    .badge-verified { background: #DBEAFE; color: #1E40AF; border-color: #BFDBFE; }
-    .badge-pending { background: #FEF9C3; color: #854D0E; border-color: #FEF08A; }
-    .badge-won { background: #DCFCE7; color: #166534; border-color: #BBF7D0; }
-    .badge-lost { background: #FEE2E2; color: #991B1B; border-color: #FECACA; }
+    .badge-good { background: #DCFCE7; color: #166534; }
+    .badge-average { background: #FEF3C7; color: #92400E; }
+    .badge-poor { background: #FEE2E2; color: #991B1B; }
+    .badge-not-rated { background: #F1F5F9; color: #64748B; }
+    .badge-verified { background: #DBEAFE; color: #1E40AF; }
+    .badge-pending { background: #FEF9C3; color: #854D0E; }
+    .badge-won { background: #DCFCE7; color: #166534; }
+    .badge-lost { background: #FEE2E2; color: #991B1B; }
 
     /* Bottom Navigation (4 Bottom Nav Tabs) */
     .bottom-nav {
@@ -1075,14 +1036,11 @@ export function renderMobileAppHtml(): string {
       bottom: 0;
       left: 0;
       right: 0;
-      background: rgba(255, 255, 255, 0.94);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      background: var(--card-bg);
       border-top: 1px solid var(--border);
       display: flex;
-      height: 64px;
+      height: 60px;
       z-index: 50;
-      box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.03);
     }
     .nav-item {
       flex: 1;
@@ -1096,78 +1054,28 @@ export function renderMobileAppHtml(): string {
       text-decoration: none;
       min-height: 44px;
       cursor: pointer;
-      transition: all 0.2s var(--ease-out);
-      gap: 3px;
-    }
-    .nav-item:active {
-      transform: scale(0.96);
     }
     .nav-item.active {
       color: var(--blue);
       font-weight: 600;
     }
-    .nav-item.active .nav-icon {
-      color: var(--blue);
-    }
     .nav-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      transition: transform 0.2s var(--ease-out);
-    }
-    .nav-item.active .nav-icon {
-      transform: translateY(-1px);
-    }
-
-    /* Empty States */
-    .empty-state {
-      text-align: center;
-      padding: 36px 16px;
-      color: var(--muted);
-    }
-    .empty-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      margin-bottom: 12px;
-    }
-    .empty-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--navy);
-      margin-bottom: 4px;
-      letter-spacing: -0.01em;
-    }
-    .empty-desc {
-      font-size: 12px;
-      color: var(--muted);
-      max-width: 280px;
-      margin: 0 auto;
-      line-height: 1.5;
+      font-size: 18px;
+      margin-bottom: 2px;
     }
 
     /* Modal Overlay */
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.45);
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
+      background: rgba(15, 23, 42, 0.4);
       display: flex;
       align-items: flex-end;
       justify-content: center;
       z-index: 100;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 0.25s var(--ease-out);
+      transition: opacity 0.2s;
     }
     .modal-overlay.open {
       opacity: 1;
@@ -1175,16 +1083,14 @@ export function renderMobileAppHtml(): string {
     }
     .modal-content {
       background: var(--card-bg);
-      border-radius: 20px 20px 0 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.6);
+      border-radius: 16px 16px 0 0;
       width: 100%;
       max-width: 480px;
       max-height: 85vh;
       overflow-y: auto;
-      padding: 22px 18px;
+      padding: 20px 16px;
       transform: translateY(100%);
-      transition: transform 0.3s var(--ease-out);
-      box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.12);
+      transition: transform 0.25s ease-out;
     }
     .modal-overlay.open .modal-content {
       transform: translateY(0);
@@ -1200,19 +1106,19 @@ export function renderMobileAppHtml(): string {
 
     /* Paste assistant card */
     .paste-assistant {
-      border: 1px solid #BFDBFE;
-      background: #F0F7FF;
+      border: 1px dashed var(--blue);
+      background: var(--blue-light);
       border-radius: var(--radius);
-      padding: 14px;
+      padding: 12px;
       margin-bottom: 16px;
     }
 
     /* Smooth View Transitions */
     .fade-in {
-      animation: fadeIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
+      from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
     @keyframes spin {
@@ -1237,10 +1143,10 @@ export function renderMobileAppHtml(): string {
 
   <!-- Screen 0: Authentication / Login Screen (Shown when unauthenticated) -->
   <div id="screen-auth" class="container">
-    <div class="card" style="text-align: center; padding: 28px 18px; margin-top: 20px;">
+    <div class="card" style="text-align: center; padding: 24px 16px; margin-top: 16px;">
       ${LOGO_HERO_SVG}
-      <h1 style="font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 6px;">WhoWasRight</h1>
-      <p style="font-size: 13.5px; color: var(--muted); margin-bottom: 22px; line-height: 1.5;">
+      <h1 style="font-size: 20px; font-weight: 700; color: var(--navy); margin-bottom: 6px;">WhoWasRight</h1>
+      <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5;">
         A private record of sports predictions with verifiable proof of who called it right.
       </p>
 
@@ -1249,11 +1155,11 @@ export function renderMobileAppHtml(): string {
       </div>
 
       <!-- Telegram Login Widget Section (Primary) -->
-      <div style="margin-bottom: 22px;">
-        <div style="font-size: 13.5px; font-weight: 600; color: var(--slate); margin-bottom: 4px;">
+      <div style="margin-bottom: 20px;">
+        <div style="font-size: 13px; font-weight: 600; color: var(--slate); margin-bottom: 4px;">
           Sign In with Telegram
         </div>
-        <p style="font-size: 11.5px; color: var(--muted); margin-bottom: 14px;">
+        <p style="font-size: 11px; color: var(--muted); margin-bottom: 14px;">
           Receive verified result alerts and settlement reminders via ${botHandle}.
         </p>
         <div id="telegram-login-container" style="display: flex; justify-content: center; min-height: 44px; align-items: center;">
@@ -1262,11 +1168,11 @@ export function renderMobileAppHtml(): string {
       </div>
 
       <!-- Demo Account Login (Compact Secondary Alternative) -->
-      <div style="border-top: 1px solid var(--border); padding-top: 18px;">
-        <button id="btn-demo-login" class="btn btn-outline btn-sm" onclick="handleDemoLogin()" style="width: auto; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 8px 18px; font-size: 13px; color: var(--slate); font-weight: 600;">
+      <div style="border-top: 1px solid var(--border); padding-top: 16px;">
+        <button id="btn-demo-login" class="btn btn-outline btn-sm" onclick="handleDemoLogin()" style="width: auto; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 8px 16px; font-size: 13px; color: var(--slate);">
           Log in with a demo account
         </button>
-        <div style="font-size: 11.5px; color: var(--muted); margin-top: 8px;">
+        <div style="font-size: 11px; color: var(--muted); margin-top: 6px;">
           Explore an interactive demo pre-loaded with active tipsters and past results.
         </div>
       </div>
@@ -1282,7 +1188,7 @@ export function renderMobileAppHtml(): string {
       <span class="logo-badge">Journal</span>
     </div>
     <div style="display: flex; align-items: center; gap: 8px;">
-      <button class="btn btn-primary btn-sm" onclick="openLogScreen()" style="width: auto; height: 38px; padding: 0 14px; font-size: 13px; font-weight: 600;">
+      <button class="btn btn-primary btn-sm" onclick="openLogScreen()" style="width: auto; height: 36px; padding: 0 12px; font-size: 13px; font-weight: 600;">
         + Log Pick
       </button>
       <div id="daily-count-badge" class="badge badge-not-rated" style="font-size: 11px;">
@@ -1296,10 +1202,10 @@ export function renderMobileAppHtml(): string {
 
     <!-- Screen 1: Dashboard / Home -->
     <div id="screen-home" class="screen">
-      <div class="card" style="background: #0F172A; color: #FFFFFF; border: 1px solid #1E293B; position: relative; overflow: hidden; padding: 22px 18px;">
-        <div style="font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #94A3B8; margin-bottom: 6px;">Verified Sports Records</div>
-        <div style="font-size: 21px; font-weight: 700; line-height: 1.3; margin-bottom: 14px; background: linear-gradient(90deg, #FFFFFF 0%, #9B9B9B 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Hold tipsters accountable to their real record</div>
-        <button class="btn btn-primary" onclick="openLogScreen()" style="background: var(--blue); box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);">
+      <div class="card" style="background: linear-gradient(135deg, #1E293B, #0F172A); color: white;">
+        <div style="font-size: 13px; color: #94A3B8; margin-bottom: 4px;">Private Prediction Journal</div>
+        <div style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Track Who Was Actually Right</div>
+        <button class="btn btn-primary" onclick="openLogScreen()" style="background: var(--blue);">
           + Log New Prediction
         </button>
       </div>
@@ -1307,16 +1213,16 @@ export function renderMobileAppHtml(): string {
       <div class="card">
         <div class="card-title">
           <span>Overview</span>
-          <span style="font-size: 12px; font-weight: 500; color: var(--muted);" id="stat-total-picks" class="tabular-nums">0 picks total</span>
+          <span style="font-size: 12px; color: var(--muted);" id="stat-total-picks">0 picks total</span>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div style="background: var(--bg); border: 1px solid var(--border-subtle); padding: 14px 12px; border-radius: var(--radius-sm);">
-            <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted);">PENDING PICKS</div>
-            <div id="stat-pending" class="tabular-nums" style="font-size: 24px; font-weight: 700; color: var(--navy); margin-top: 2px;">0</div>
+          <div style="background: var(--bg); padding: 12px; border-radius: 8px;">
+            <div style="font-size: 11px; color: var(--muted);">PENDING PICKS</div>
+            <div id="stat-pending" style="font-size: 22px; font-weight: 700; color: var(--navy);">0</div>
           </div>
-          <div style="background: var(--bg); border: 1px solid var(--border-subtle); padding: 14px 12px; border-radius: var(--radius-sm);">
-            <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted);">SETTLED PICKS</div>
-            <div id="stat-settled" class="tabular-nums" style="font-size: 24px; font-weight: 700; color: var(--navy); margin-top: 2px;">0</div>
+          <div style="background: var(--bg); padding: 12px; border-radius: 8px;">
+            <div style="font-size: 11px; color: var(--muted);">SETTLED PICKS</div>
+            <div id="stat-settled" style="font-size: 22px; font-weight: 700; color: var(--navy);">0</div>
           </div>
         </div>
       </div>
@@ -1324,11 +1230,11 @@ export function renderMobileAppHtml(): string {
       <div class="card">
         <div class="card-title">
           <span>Top Analysts</span>
-          <a href="javascript:void(0)" onclick="switchTab('analysts')" style="font-size: 13px; font-weight: 600; color: var(--blue); text-decoration: none;">View All</a>
+          <a href="javascript:void(0)" onclick="switchTab('analysts')" style="font-size: 13px; color: var(--blue); text-decoration: none;">View All</a>
         </div>
         <div id="home-analysts-list">
-          <div class="empty-state" style="padding: 20px 12px;">
-            <div style="font-size: 13px; color: var(--muted);">No analysts recorded yet.</div>
+          <div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">
+            No analysts logged yet.
           </div>
         </div>
       </div>
@@ -1336,11 +1242,11 @@ export function renderMobileAppHtml(): string {
 
     <!-- Screen 2: Log Prediction (Primary Action Flow) -->
     <div id="screen-log" class="screen hidden">
-      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
-        <button class="btn btn-outline btn-sm" onclick="handleBackHome()" style="min-width: 44px; min-height: 44px; padding: 0 14px; font-weight: 600;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <button class="btn btn-outline btn-sm" onclick="handleBackHome()" style="min-width: 44px; min-height: 44px; padding: 0 12px;">
           ← Back
         </button>
-        <span style="font-size: 17px; font-weight: 700; color: var(--navy);">Record Prediction</span>
+        <span style="font-size: 16px; font-weight: 700;">Record Prediction</span>
       </div>
 
       <!-- Soft Daily Limit Warning (Neutral wording) -->
@@ -1350,20 +1256,20 @@ export function renderMobileAppHtml(): string {
 
       <!-- Paste Assistant Card -->
       <div class="paste-assistant">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-          <span style="font-size: 13px; font-weight: 700; color: var(--blue);">Quick Paste Assistant</span>
-          <span style="font-size: 11px; font-weight: 600; color: var(--blue); background: #DBEAFE; padding: 2px 8px; border-radius: 9999px;">Smart Extractor</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 13px; font-weight: 600; color: var(--blue);">📋 Quick Paste Assistant</span>
+          <span style="font-size: 11px; color: var(--muted);">Smart auto-fill</span>
         </div>
-        <div class="form-group" style="margin-bottom: 10px;">
-          <input type="text" id="paste-input" class="input" placeholder="Paste pick message (e.g. Arsenal vs Chelsea - Over 2.5 goals)" style="font-size: 13px;">
+        <div class="form-group" style="margin-bottom: 8px;">
+          <input type="text" id="paste-input" class="input" placeholder="Paste tip (e.g. Arsenal vs Chelsea - Over 2.5 goals)" style="font-size: 13px;">
         </div>
         <div style="display: flex; gap: 8px;">
-          <button class="btn btn-outline btn-sm" onclick="handlePasteParse()" style="background: white; flex: 1; font-weight: 600;">Extract Pick Details</button>
+          <button class="btn btn-outline btn-sm" onclick="handlePasteParse()" style="background: white; flex: 1;">Parse Post</button>
         </div>
-        <div id="paste-preview" class="hidden" style="margin-top: 12px; font-size: 12px; background: white; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
-          <div style="font-weight: 600; margin-bottom: 6px; color: var(--navy);">Extracted details (confirm before saving):</div>
-          <div id="paste-preview-content" style="line-height: 1.6;"></div>
-          <button class="btn btn-primary btn-sm" onclick="applyParsedCandidate()" style="margin-top: 10px; width: 100%;">Use Suggestion</button>
+        <div id="paste-preview" class="hidden" style="margin-top: 10px; font-size: 12px; background: white; padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
+          <div style="font-weight: 600; margin-bottom: 4px; color: var(--navy);">Parsed Suggestions (Requires Review):</div>
+          <div id="paste-preview-content"></div>
+          <button class="btn btn-primary btn-sm" onclick="applyParsedCandidate()" style="margin-top: 8px; width: 100%;">Use Suggestion</button>
         </div>
       </div>
 
@@ -1412,14 +1318,14 @@ export function renderMobileAppHtml(): string {
           <div class="form-group">
             <label class="label">Kickoff Time (UTC)</label>
             <input type="datetime-local" id="form-kickoff" class="input" required>
-            <span style="font-size: 11px; color: var(--muted); margin-top: 4px; display: block;">Kickoff lock: predictions cannot be logged at or after start.</span>
+            <span style="font-size: 11px; color: var(--muted);">Kickoff lock: predictions cannot be logged at or after start.</span>
           </div>
 
           <!-- Analyst Selection -->
           <div class="form-group">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
               <label class="label" style="margin-bottom: 0;">Analyst</label>
-              <a href="javascript:void(0)" onclick="openNewAnalystModal()" style="font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: none;">+ New Analyst</a>
+              <a href="javascript:void(0)" onclick="openNewAnalystModal()" style="font-size: 12px; color: var(--blue); text-decoration: none;">+ New Analyst</a>
             </div>
             <select id="form-analyst" class="select" onchange="handleAnalystDropdownChange()" required>
               <option value="">Select Analyst...</option>
@@ -1464,7 +1370,7 @@ export function renderMobileAppHtml(): string {
 
     <!-- Screen 3: Predictions List -->
     <div id="screen-predictions" class="screen hidden">
-      <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
         <button class="btn btn-outline btn-sm filter-btn active" onclick="filterPredictions('ALL', this)">All</button>
         <button class="btn btn-outline btn-sm filter-btn" onclick="filterPredictions('PENDING', this)">Pending</button>
         <button class="btn btn-outline btn-sm filter-btn" onclick="filterPredictions('SETTLED', this)">Settled</button>
@@ -1478,8 +1384,8 @@ export function renderMobileAppHtml(): string {
 
     <!-- Screen 4: Analysts List -->
     <div id="screen-analysts" class="screen hidden">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-        <span style="font-size: 17px; font-weight: 700; color: var(--navy);">Analyst Profiles</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <span style="font-size: 16px; font-weight: 700;">Analyst Profiles</span>
         <button class="btn btn-primary btn-sm" onclick="openNewAnalystModal()">+ Add Analyst</button>
       </div>
       <div id="analysts-list">
@@ -1491,47 +1397,47 @@ export function renderMobileAppHtml(): string {
 
     <!-- Screen 4b: Analyst Detail Screen -->
     <div id="screen-analyst-detail" class="screen hidden">
-      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
-        <button class="btn btn-outline btn-sm" onclick="switchTab('analysts')" style="min-width: 44px; min-height: 44px; padding: 0 14px; font-weight: 600;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <button class="btn btn-outline btn-sm" onclick="switchTab('analysts')" style="min-width: 44px; min-height: 44px; padding: 0 12px;">
           ← Back
         </button>
-        <span style="font-size: 17px; font-weight: 700; color: var(--navy);" id="detail-analyst-title">Analyst Profile</span>
+        <span style="font-size: 16px; font-weight: 700;" id="detail-analyst-title">Analyst Profile</span>
       </div>
 
       <!-- Credibility Card -->
       <div class="card" id="detail-credibility-card">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
           <div>
             <div style="font-size: 18px; font-weight: 700; color: var(--navy);" id="detail-name"></div>
-            <div style="font-size: 12px; color: var(--muted); margin-top: 2px;" id="detail-aliases"></div>
+            <div style="font-size: 12px; color: var(--muted);" id="detail-aliases"></div>
           </div>
-          <span class="badge" id="detail-rating-tier-badge" style="font-size: 12px; padding: 4px 10px;">Not Rated</span>
+          <span class="badge" id="detail-rating-tier-badge" style="font-size: 13px; padding: 4px 10px;">Not Rated</span>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-          <div style="background: var(--bg); border: 1px solid var(--border-subtle); padding: 12px; border-radius: var(--radius-sm);">
-            <div style="font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em;">WIN RATE</div>
-            <div style="font-size: 22px; font-weight: 700; color: var(--navy); margin-top: 2px;" id="detail-win-rate" class="tabular-nums">—</div>
+          <div style="background: var(--bg); padding: 10px 12px; border-radius: 8px;">
+            <div style="font-size: 11px; color: var(--muted);">WIN RATE</div>
+            <div style="font-size: 20px; font-weight: 700; color: var(--navy);" id="detail-win-rate">—</div>
           </div>
-          <div style="background: var(--bg); border: 1px solid var(--border-subtle); padding: 12px; border-radius: var(--radius-sm);">
-            <div style="font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em;">HISTORY BADGE</div>
-            <div style="font-size: 14px; font-weight: 600; color: var(--navy); margin-top: 6px;" id="detail-history-badge">Insufficient</div>
+          <div style="background: var(--bg); padding: 10px 12px; border-radius: 8px;">
+            <div style="font-size: 11px; color: var(--muted);">HISTORY BADGE</div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--navy); margin-top: 4px;" id="detail-history-badge">Insufficient</div>
           </div>
         </div>
 
         <!-- Outcome breakdown grid -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px; text-align: center;">
-          <div style="background: #F0FDF4; border: 1px solid #DCFCE7; padding: 10px 8px; border-radius: var(--radius-sm);">
-            <div style="font-size: 11px; color: #166534; font-weight: 600; letter-spacing: 0.04em;">WON</div>
-            <div style="font-size: 18px; font-weight: 700; color: #166534; margin-top: 2px;" id="detail-count-won" class="tabular-nums">0</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; text-align: center;">
+          <div style="background: #F0FDF4; border: 1px solid #DCFCE7; padding: 8px; border-radius: 6px;">
+            <div style="font-size: 11px; color: #166534; font-weight: 600;">WON</div>
+            <div style="font-size: 16px; font-weight: 700; color: #166534;" id="detail-count-won">0</div>
           </div>
-          <div style="background: #FEF2F2; border: 1px solid #FEE2E2; padding: 10px 8px; border-radius: var(--radius-sm);">
-            <div style="font-size: 11px; color: #991B1B; font-weight: 600; letter-spacing: 0.04em;">LOST</div>
-            <div style="font-size: 18px; font-weight: 700; color: #991B1B; margin-top: 2px;" id="detail-count-lost" class="tabular-nums">0</div>
+          <div style="background: #FEF2F2; border: 1px solid #FEE2E2; padding: 8px; border-radius: 6px;">
+            <div style="font-size: 11px; color: #991B1B; font-weight: 600;">LOST</div>
+            <div style="font-size: 16px; font-weight: 700; color: #991B1B;" id="detail-count-lost">0</div>
           </div>
-          <div style="background: #F8FAFC; border: 1px solid var(--border); padding: 10px 8px; border-radius: var(--radius-sm);">
-            <div style="font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em;">PUSH</div>
-            <div style="font-size: 18px; font-weight: 700; color: var(--slate); margin-top: 2px;" id="detail-count-push" class="tabular-nums">0</div>
+          <div style="background: #F8FAFC; border: 1px solid var(--border); padding: 8px; border-radius: 6px;">
+            <div style="font-size: 11px; color: var(--muted); font-weight: 600;">PUSH</div>
+            <div style="font-size: 16px; font-weight: 700; color: var(--slate);" id="detail-count-push">0</div>
           </div>
         </div>
 
@@ -1539,7 +1445,7 @@ export function renderMobileAppHtml(): string {
         <div style="padding: 10px 0; border-top: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between;">
           <span style="color: var(--muted);">Verification:</span>
           <span>
-            <strong id="detail-count-api" class="tabular-nums">0</strong> API-Verified · <strong id="detail-count-self" class="tabular-nums">0</strong> Self-Reported
+            <strong id="detail-count-api">0</strong> API-Verified · <strong id="detail-count-self">0</strong> Self-Reported
           </span>
         </div>
 
@@ -1590,12 +1496,12 @@ export function renderMobileAppHtml(): string {
 
       <div class="card">
         <div class="card-title">Storage & Privacy</div>
-        <div style="font-size: 12.5px; color: var(--slate); line-height: 1.65;">
-          <p style="margin-bottom: 8px;"><strong>Permanent Ledger:</strong> Historical prediction and settlement records are permanently synchronized to decentralized Walrus storage for independent reconstruction without risk of retroactive changes.</p>
+        <div style="font-size: 12px; color: var(--slate); line-height: 1.6;">
+          <p style="margin-bottom: 8px;"><strong>Permanent Ledger:</strong> Historical prediction and settlement records are permanently synchronized to decentralized Walrus storage so records cannot be edited or deleted after a loss.</p>
           <p style="margin-bottom: 8px;"><strong>Private by Design:</strong> Event payloads are secured with AES-256-GCM encryption before storage, keeping your personal journal strictly confidential.</p>
-          <p style="margin-bottom: 8px;"><strong>On-Chain Timestamps:</strong> Sui Mainnet gRPC account verification proves exactly when each prediction and outcome occurred.</p>
+          <p style="margin-bottom: 8px;"><strong>On-Chain Timestamps:</strong> Sui Mainnet gRPC ledger verification confirms authentic kickoff and settlement timing.</p>
           <p style="font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 8px;">
-            Immutable storage note: Committed records are permanently anchored and cannot be modified or deleted.
+            Note: Due to the immutable nature of decentralized storage, encrypted records committed to Walrus cannot be modified or deleted.
           </p>
         </div>
       </div>
@@ -1620,7 +1526,7 @@ export function renderMobileAppHtml(): string {
     <div class="modal-content">
       <div class="card-title">
         <span id="modal-analyst-title">New Analyst</span>
-        <button onclick="closeModal('modal-analyst')" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--muted); padding: 4px;">✕</button>
+        <button onclick="closeModal('modal-analyst')" style="background: none; border: none; font-size: 18px; cursor: pointer;">✕</button>
       </div>
       <form id="analyst-form" onsubmit="handleSaveAnalyst(event)">
         <input type="hidden" id="modal-analyst-id">
@@ -1650,9 +1556,9 @@ export function renderMobileAppHtml(): string {
     <div class="modal-content">
       <div class="card-title">
         <span>Merge Analyst Profiles</span>
-        <button onclick="closeModal('modal-merge')" style="background: none; border: none; font-size: 18px; cursor: pointer; color: var(--muted); padding: 4px;">✕</button>
+        <button onclick="closeModal('modal-merge')" style="background: none; border: none; font-size: 18px; cursor: pointer;">✕</button>
       </div>
-      <div style="font-size: 13px; color: var(--slate); margin-bottom: 14px; line-height: 1.5;">
+      <div style="font-size: 13px; color: var(--slate); margin-bottom: 14px;">
         Merge another profile into <strong id="merge-target-name"></strong>. All predictions are preserved and this merge can be <strong>reversed at any time</strong>.
       </div>
       <input type="hidden" id="merge-target-id">
@@ -1667,27 +1573,19 @@ export function renderMobileAppHtml(): string {
   <!-- Bottom Navigation (Approved 4 Destinations: Home, Predictions, Analysts, Settings) -->
   <nav class="bottom-nav">
     <div class="nav-item active" onclick="switchTab('home')" id="tab-home">
-      <div class="nav-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-      </div>
+      <div class="nav-icon">🏠</div>
       <span>Home</span>
     </div>
     <div class="nav-item" onclick="switchTab('predictions')" id="tab-predictions">
-      <div class="nav-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      </div>
+      <div class="nav-icon">📊</div>
       <span>Predictions</span>
     </div>
     <div class="nav-item" onclick="switchTab('analysts')" id="tab-analysts">
-      <div class="nav-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      </div>
+      <div class="nav-icon">👥</div>
       <span>Analysts</span>
     </div>
     <div class="nav-item" onclick="switchTab('settings')" id="tab-settings">
-      <div class="nav-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </div>
+      <div class="nav-icon">⚙️</div>
       <span>Settings</span>
     </div>
   </nav>
@@ -2204,11 +2102,7 @@ export function renderMobileAppHtml(): string {
       if (!container) return;
 
       if (analystsList.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 24px 16px;">' +
-          '<div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>' +
-          '<div class="empty-title">No analysts recorded yet</div>' +
-          '<div class="empty-desc">Create your first analyst profile to begin tracking accuracy.</div>' +
-        '</div>';
+        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">No analysts logged yet.</div>';
         return;
       }
 
@@ -2219,10 +2113,10 @@ export function renderMobileAppHtml(): string {
                           tier === 'Average' ? 'badge-average' :
                           tier === 'Poor' ? 'badge-poor' : 'badge-not-rated';
         const winRate = cred.winRate !== null && cred.winRate !== undefined ? cred.winRate + '%' : 'N/A';
-        return '<div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border);">' +
+        return '<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border);">' +
           '<div onclick="openAnalystDetail(\\\'' + a.id + '\\\')" style="cursor: pointer;">' +
-            '<div style="font-weight: 700; font-size: 14.5px; color: var(--navy); display: flex; align-items: center; gap: 4px;">' + a.name + ' <span style="color: var(--blue); font-size: 13px;">→</span></div>' +
-            '<div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;" class="tabular-nums">' + (cred.settledCount || 0) + ' settled · ' + winRate + ' win rate · ' + (cred.historyBadge || 'Insufficient') + '</div>' +
+            '<div style="font-weight: 600; font-size: 14px; color: var(--navy);">' + a.name + '</div>' +
+            '<div style="font-size: 11px; color: var(--muted);">' + (cred.settledCount || 0) + ' settled · ' + winRate + ' win rate · ' + (cred.historyBadge || 'Insufficient') + '</div>' +
           '</div>' +
           '<span class="badge ' + tierClass + '">' + tier + '</span>' +
         '</div>';
@@ -2235,11 +2129,7 @@ export function renderMobileAppHtml(): string {
       if (!container) return;
 
       if (predictionsList.length === 0) {
-        container.innerHTML = '<div class="empty-state">' +
-          '<div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>' +
-          '<div class="empty-title">No predictions found</div>' +
-          '<div class="empty-desc">No predictions match the active filter. Tap "+ Log Pick" above to record a new pick.</div>' +
-        '</div>';
+        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">No predictions match this filter.</div>';
         return;
       }
 
@@ -2251,26 +2141,26 @@ export function renderMobileAppHtml(): string {
         }) + ' UTC';
 
         const syncBadge = p.walrus_sync_status === 'CONFIRMED'
-          ? '<span class="badge badge-good" style="font-size: 10px;">✓ Synced</span>'
-          : '<span class="badge badge-pending" style="font-size: 10px;">⏳ Syncing</span>';
+          ? '<span class="badge badge-good" style="font-size: 10px;">✓ Walrus Synced</span>'
+          : '<span class="badge badge-pending" style="font-size: 10px;">⏳ Syncing...</span>';
 
-        return '<div class="card" id="prediction-card-' + p.id + '" style="margin-bottom: 12px;">' +
-          '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">' +
+        return '<div class="card" id="prediction-card-' + p.id + '" style="margin-bottom: 10px;">' +
+          '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
             '<div>' +
-              '<span class="badge badge-not-rated" style="margin-right: 6px; font-size: 10px;">' + p.sport + '</span>' +
-              '<strong style="font-size: 14px; color: var(--navy);">' + p.event_label + '</strong>' +
+              '<span class="badge badge-not-rated" style="margin-right: 6px;">' + p.sport + '</span>' +
+              '<strong style="font-size: 14px;">' + p.event_label + '</strong>' +
             '</div>' +
-            '<div style="display: flex; gap: 6px; align-items: center;">' +
+            '<div style="display: flex; gap: 4px; align-items: center;">' +
               syncBadge +
               '<span class="badge ' + outcomeClass + '">' + p.outcome + '</span>' +
             '</div>' +
           '</div>' +
-          '<div style="font-size: 13.5px; color: var(--navy); margin-bottom: 8px;">' +
-            '<span style="color: var(--muted); font-size: 11.5px; font-weight: 600;">PICK:</span> ' + p.market + ' — <strong>' + p.selection + '</strong>' +
+          '<div style="font-size: 13px; color: var(--navy); margin-bottom: 6px;">' +
+            '<strong>Pick:</strong> ' + p.market + ' — ' + p.selection +
           '</div>' +
-          '<div style="display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--border-subtle); padding-top: 8px;">' +
-            '<span>Analyst: <strong style="color: var(--slate);">' + p.analyst_name + '</strong></span>' +
-            '<span class="tabular-nums">' + kickoff + '</span>' +
+          '<div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);">' +
+            '<span>Analyst: ' + p.analyst_name + '</span>' +
+            '<span>Kickoff: ' + kickoff + '</span>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -2348,11 +2238,7 @@ export function renderMobileAppHtml(): string {
       if (!container) return;
 
       if (analystsList.length === 0) {
-        container.innerHTML = '<div class="empty-state">' +
-          '<div class="empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>' +
-          '<div class="empty-title">No analysts added yet</div>' +
-          '<div class="empty-desc">Add tipsters, influencers, or algorithm accounts to begin recording their track records.</div>' +
-        '</div>';
+        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">No analysts added yet.</div>';
         return;
       }
 
@@ -2366,21 +2252,21 @@ export function renderMobileAppHtml(): string {
         const aliases = (a.aliases || []).map(al => '@' + al.handle + ' (' + al.platform + ')').join(', ') || 'No aliases';
 
         return '<div class="card">' +
-          '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">' +
+          '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
             '<div onclick="openAnalystDetail(\\\'' + a.id + '\\\')" style="cursor: pointer; flex: 1;">' +
-              '<div style="font-weight: 700; font-size: 15px; color: var(--navy); display: flex; align-items: center; gap: 4px;">' + a.name + ' <span style="color: var(--blue); font-size: 13px;">→</span></div>' +
-              '<div style="font-size: 12px; color: var(--muted); margin-top: 2px;">' + aliases + '</div>' +
+              '<div style="font-weight: 700; font-size: 15px; color: var(--blue);">' + a.name + ' →</div>' +
+              '<div style="font-size: 12px; color: var(--muted);">' + aliases + '</div>' +
             '</div>' +
             '<span class="badge ' + tierClass + '">' + tier + '</span>' +
           '</div>' +
-          '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 12px; margin: 12px 0; background: var(--bg); border: 1px solid var(--border-subtle); padding: 10px; border-radius: var(--radius-sm); text-align: center;">' +
-            '<div><span style="color: var(--muted); font-size: 10px; font-weight: 600; display: block; margin-bottom: 2px;">WIN RATE</span><strong class="tabular-nums" style="font-size: 14px; color: var(--navy);">' + winRate + '</strong></div>' +
-            '<div><span style="color: var(--muted); font-size: 10px; font-weight: 600; display: block; margin-bottom: 2px;">SETTLED</span><strong class="tabular-nums" style="font-size: 14px; color: var(--navy);">' + (cred.settledCount || 0) + '</strong> <span style="font-size: 10px; color: var(--muted);">(' + (cred.wonCount || 0) + 'W-' + (cred.lostCount || 0) + 'L)</span></div>' +
-            '<div><span style="color: var(--muted); font-size: 10px; font-weight: 600; display: block; margin-bottom: 2px;">HISTORY</span><strong style="font-size: 13px; color: var(--navy);">' + (cred.historyBadge || 'Insufficient') + '</strong></div>' +
+          '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 12px; margin: 10px 0; background: var(--bg); padding: 8px; border-radius: 6px;">' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">WIN RATE</span><strong>' + winRate + '</strong></div>' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">SETTLED</span><strong>' + (cred.settledCount || 0) + '</strong> (' + (cred.wonCount || 0) + 'W-' + (cred.lostCount || 0) + 'L)</div>' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">HISTORY</span><strong>' + (cred.historyBadge || 'Insufficient') + '</strong></div>' +
           '</div>' +
           '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">' +
-            '<div style="font-size: 11px; color: var(--muted);"><span class="tabular-nums">' + (cred.apiVerifiedCount || 0) + '</span> API · <span class="tabular-nums">' + (cred.selfReportedCount || 0) + '</span> Self</div>' +
-            '<div style="display: flex; gap: 8px;">' +
+            '<div style="font-size: 11px; color: var(--muted);">' + (cred.apiVerifiedCount || 0) + ' API · ' + (cred.selfReportedCount || 0) + ' Self</div>' +
+            '<div style="display: flex; gap: 6px;">' +
               '<button class="btn btn-outline btn-sm" onclick="openAnalystDetail(\\\'' + a.id + '\\\')">View Details</button>' +
               '<button class="btn btn-outline btn-sm" onclick="openMergeModal(\\\'' + a.id + '\\\', \\\'' + a.name + '\\\')">Merge...</button>' +
             '</div>' +

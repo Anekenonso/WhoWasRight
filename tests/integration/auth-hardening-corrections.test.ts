@@ -18,7 +18,7 @@
 
 import http from 'node:http';
 import { createWebServer, isOriginAllowed, getCorsHeaders } from '../../src/web/server.ts';
-import { query } from '../../src/core/db.ts';
+import { query } from './test-db.ts';
 import { createDemoSession, cleanupExpiredDemoSessions } from '../../src/core/demo-mode.ts';
 import { processMemoryOutbox } from '../../src/core/walrus-outbox-worker.ts';
 import { runSettlementCycle } from '../../src/core/football-settler.ts';

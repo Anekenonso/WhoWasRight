@@ -13,7 +13,7 @@
  * 8. Analyst alias linking.
  */
 
-import { query, withTransaction } from '../../src/core/db.ts';
+import { query, withTransaction } from './test-db.ts';
 import { createEvent, createPrediction, settlePrediction } from '../../src/core/predictions.ts';
 
 export async function runDatabaseDomainIntegrationTests(): Promise<{

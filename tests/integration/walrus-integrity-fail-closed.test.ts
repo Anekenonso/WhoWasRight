@@ -18,7 +18,7 @@
 
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { query } from '../../src/core/db.ts';
+import { query } from './test-db.ts';
 import { createAnalyst, getAnalystDetail } from '../../src/core/analysts.ts';
 import { reconstructUserHistoryFromWalrus } from '../../src/core/walrus-outbox-worker.ts';
 import { reconstructFromWalrusMemories } from '../../src/core/walrus-reconstruction.ts';

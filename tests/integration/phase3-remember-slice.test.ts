@@ -13,7 +13,7 @@
  * 9. Automated football settlement, outcome audit events, and outbox sync.
  */
 
-import { query, withTransaction } from '../../src/core/db.ts';
+import { query, withTransaction } from './test-db.ts';
 import { createAnalyst } from '../../src/core/analysts.ts';
 import { createEvent, createPrediction } from '../../src/core/predictions.ts';
 import { processMemoryOutbox, reconstructUserHistoryFromWalrus } from '../../src/core/walrus-outbox-worker.ts';

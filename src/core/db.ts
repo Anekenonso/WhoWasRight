@@ -4,6 +4,7 @@
  */
 
 import pg from 'pg';
+import { isTestEnvironment, assertDatabaseIsolation } from './test-isolation.ts';
 
 const { Pool } = pg;
 
@@ -11,9 +12,17 @@ let pool: pg.Pool | null = null;
 
 export function getDbPool(): pg.Pool {
   if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error('DATABASE_URL is not set');
+    let connectionString: string | undefined;
+
+    if (isTestEnvironment()) {
+      // In a test environment, strictly require TEST_DATABASE_URL and verify isolation
+      assertDatabaseIsolation(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
+      connectionString = process.env.TEST_DATABASE_URL;
+    } else {
+      connectionString = process.env.DATABASE_URL;
+      if (!connectionString) {
+        throw new Error('DATABASE_URL is not set');
+      }
     }
     pool = new Pool({
       connectionString,

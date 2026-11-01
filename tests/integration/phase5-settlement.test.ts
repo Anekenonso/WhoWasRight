@@ -23,7 +23,7 @@
  * 15. Football quota exhaustion: settlement halts gracefully.
  */
 
-import { query, withTransaction, closeDbPool } from '../../src/core/db.ts';
+import { query, withTransaction, closeDbPool } from './test-db.ts';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   generateBotLinkToken,

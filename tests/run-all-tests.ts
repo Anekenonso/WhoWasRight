@@ -21,15 +21,8 @@ import { runFootballCacheUnitTests } from './unit/football-cache.test.ts';
 import { runPasteParserUnitTests } from './unit/paste-parser.test.ts';
 import { runDailyLimitsUnitTests } from './unit/daily-limits.test.ts';
 import { runSettlementUnitTests } from './unit/settlement.test.ts';
-import { runDatabaseDomainIntegrationTests } from './integration/database-domain.test.ts';
-import { runPhase2IntegrationTests } from './integration/phase2-record-slice.test.ts';
-import { runWebServerIntegrationTests } from './integration/web-server.test.ts';
-import { runPhase3RememberSliceIntegrationTests } from './integration/phase3-remember-slice.test.ts';
-import { runGate3OutboxResilienceTests } from './integration/gate3-outbox-resilience.test.ts';
 import { runPhase5UnitTests } from './unit/phase5-telegram-settler.test.ts';
-import { runPhase5IntegrationTests } from './integration/phase5-settlement.test.ts';
-import { runAuthHardeningCorrectionsTests } from './integration/auth-hardening-corrections.test.ts';
-import { runWalrusIntegrityFailClosedTests } from './integration/walrus-integrity-fail-closed.test.ts';
+import { enforceTestDatabaseIsolation } from '../src/core/test-isolation.ts';
 import { closeDbPool } from '../src/core/db.ts';
 
 async function main() {
@@ -81,6 +74,21 @@ async function main() {
   const p5UnitRes = runPhase5UnitTests();
   totalTests += p5UnitRes.count;
   totalFailures.push(...p5UnitRes.failures);
+
+  // Enforce strict test database isolation before loading integration tests
+  console.log('\n--- Enforcing Test Database Isolation Guard ---');
+  enforceTestDatabaseIsolation();
+  console.log('[PASS] Test database isolation boundary verified.');
+
+  // Dynamically import integration tests only AFTER isolation guard passes
+  const { runDatabaseDomainIntegrationTests } = await import('./integration/database-domain.test.ts');
+  const { runPhase2IntegrationTests } = await import('./integration/phase2-record-slice.test.ts');
+  const { runWebServerIntegrationTests } = await import('./integration/web-server.test.ts');
+  const { runPhase3RememberSliceIntegrationTests } = await import('./integration/phase3-remember-slice.test.ts');
+  const { runGate3OutboxResilienceTests } = await import('./integration/gate3-outbox-resilience.test.ts');
+  const { runPhase5IntegrationTests } = await import('./integration/phase5-settlement.test.ts');
+  const { runAuthHardeningCorrectionsTests } = await import('./integration/auth-hardening-corrections.test.ts');
+  const { runWalrusIntegrityFailClosedTests } = await import('./integration/walrus-integrity-fail-closed.test.ts');
 
   let dbCount = 0;
   let p2Count = 0;
@@ -235,4 +243,3 @@ main().catch(err => {
   console.error('Master Test Runner Fatal Error:', err);
   process.exit(1);
 });
-

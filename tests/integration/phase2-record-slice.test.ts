@@ -10,7 +10,7 @@
  * 6. Transactional outbox consistency.
  */
 
-import { query, withTransaction } from '../../src/core/db.ts';
+import { query, withTransaction } from './test-db.ts';
 import {
   createAnalyst,
   updateAnalyst,

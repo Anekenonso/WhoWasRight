@@ -14,7 +14,7 @@
  * 10. Explicit verification that PostgreSQL row locks are NOT held during external Walrus network calls.
  */
 
-import { query, getDbPool, withTransaction } from '../../src/core/db.ts';
+import { query, getDbPool, withTransaction } from './test-db.ts';
 import {
   processMemoryOutbox,
   recoverStaleInFlightOutbox,

@@ -10,7 +10,17 @@ import pg from 'pg';
 const { Client } = pg;
 
 export async function runMigrations(dbUrl?: string): Promise<{ success: boolean; applied: string[]; tables: string[] }> {
-  const connectionString = dbUrl || process.env.DATABASE_URL;
+  let connectionString = dbUrl;
+  if (!connectionString) {
+    if (process.argv.includes('--test')) {
+      connectionString = process.env.TEST_DATABASE_URL;
+      if (!connectionString) {
+        throw new Error('TEST_DATABASE_URL is not set for test migrations');
+      }
+    } else {
+      connectionString = process.env.DATABASE_URL;
+    }
+  }
   if (!connectionString) {
     throw new Error('DATABASE_URL is not set');
   }
@@ -47,7 +57,7 @@ export async function runMigrations(dbUrl?: string): Promise<{ success: boolean;
       if (alreadyApplied.rows.length === 0) {
         console.log(`Applying migration: ${file}...`);
         const sql = readFileSync(join(migrationsDir, file), 'utf8');
-        
+
         await client.query('BEGIN');
         try {
           await client.query(sql);

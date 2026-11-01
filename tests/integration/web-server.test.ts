@@ -14,7 +14,7 @@
 import http from 'node:http';
 import { createHash, createHmac } from 'node:crypto';
 import { createWebServer } from '../../src/web/server.ts';
-import { query } from '../../src/core/db.ts';
+import { query } from './test-db.ts';
 import { generateSessionToken, hashSessionToken } from '../../src/core/crypto.ts';
 
 export async function runWebServerIntegrationTests(): Promise<{

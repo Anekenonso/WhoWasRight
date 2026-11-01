@@ -3,9 +3,12 @@
  * Executes SQL migrations in order against DATABASE_URL.
  */
 
+import dns from 'node:dns';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import pg from 'pg';
+
+dns.setDefaultResultOrder?.('ipv4first');
 
 const { Client } = pg;
 

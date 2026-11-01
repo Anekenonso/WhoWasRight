@@ -1,0 +1,163 @@
+name: Stage 2 PostgreSQL Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ master ]
+    paths:
+      - 'migrations/**'
+      - 'src/core/sequence-allocator.ts'
+      - 'src/core/test-isolation.ts'
+      - 'src/core/db.ts'
+      - 'tests/integration/sequence-allocator.test.ts'
+      - '.github/workflows/stage2-postgres-verification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-stage2-postgres:
+    name: PostgreSQL 17 Sequence Allocator Verification
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword123
+          POSTGRES_DB: whowasright_stage2_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      TEST_DATABASE_URL: postgresql://postgres:testpassword123@localhost:5432/whowasright_stage2_test
+      # Non-connectable placeholder URL to satisfy Stage 1 isolation guard without touching production Supabase
+      DATABASE_URL: postgresql://postgres:placeholder@remote-placeholder.example.com:5432/prod_placeholder
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Enable SSL on PostgreSQL service container
+        run: |
+          CONTAINER_ID=$(docker ps --filter "ancestor=postgres:17" --format "{{.ID}}")
+          echo "Configuring SSL on PostgreSQL 17 service container: $CONTAINER_ID"
+          docker exec $CONTAINER_ID sh -c "
+            openssl req -new -x509 -days 365 -nodes -text -out /var/lib/postgresql/data/server.crt -keyout /var/lib/postgresql/data/server.key -subj '/CN=localhost'
+            chmod 600 /var/lib/postgresql/data/server.key
+            chown postgres:postgres /var/lib/postgresql/data/server.key /var/lib/postgresql/data/server.crt
+            psql -U postgres -d whowasright_stage2_test -c 'ALTER SYSTEM SET ssl = on;'
+            psql -U postgres -d whowasright_stage2_test -c 'SELECT pg_reload_conf();'
+          "
+
+      - name: Initialize Supabase compatibility roles
+        run: |
+          CONTAINER_ID=$(docker ps --filter "ancestor=postgres:17" --format "{{.ID}}")
+          echo "Initializing Supabase compatibility roles (anon, authenticated, service_role)..."
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            DO \$\$
+            BEGIN
+              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN
+                CREATE ROLE anon NOLOGIN;
+              END IF;
+              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN
+                CREATE ROLE authenticated NOLOGIN;
+              END IF;
+              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN
+                CREATE ROLE service_role NOLOGIN;
+              END IF;
+            END
+            \$\$;
+          "
+
+      - name: Verify PostgreSQL version and database identity
+        run: |
+          CONTAINER_ID=$(docker ps --filter "ancestor=postgres:17" --format "{{.ID}}")
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT 
+              version() AS postgres_version,
+              current_database() AS database_name,
+              inet_server_addr() AS server_addr,
+              inet_server_port() AS server_port,
+              ssl_is_used() AS ssl_active;
+          "
+
+      - name: Verify Stage 1 Database Isolation Guard
+        run: |
+          node tests/unit/test-isolation.test.ts
+
+      - name: Run Stage 2 database migrations (001 through 006)
+        run: |
+          npm run migrate:test
+
+      - name: Inspect schema, constraints, indexes & RLS metadata
+        run: |
+          CONTAINER_ID=$(docker ps --filter "ancestor=postgres:17" --format "{{.ID}}")
+          echo "=== 1. Table Structure: user_event_sequences ==="
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT column_name, data_type, is_nullable, column_default 
+            FROM information_schema.columns 
+            WHERE table_name = 'user_event_sequences' 
+            ORDER BY ordinal_position;
+          "
+          echo "=== 2. Check Constraints: memory_outbox ==="
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT conname, pg_get_constraintdef(oid) 
+            FROM pg_constraint 
+            WHERE conname = 'chk_outbox_format_sequence';
+          "
+          echo "=== 3. Partial Unique Indexes ==="
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT indexname, indexdef 
+            FROM pg_indexes 
+            WHERE indexname IN ('uq_memory_outbox_user_seq', 'uq_memory_receipts_outbox_id');
+          "
+          echo "=== 4. Foreign Key Constraints ==="
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT conname, pg_get_constraintdef(oid) 
+            FROM pg_constraint 
+            WHERE conrelid = 'memory_receipts'::regclass AND contype = 'f';
+          "
+          echo "=== 5. Row Level Security Status ==="
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT tablename, rowsecurity 
+            FROM pg_tables 
+            WHERE tablename IN ('user_event_sequences', 'memory_outbox', 'memory_receipts');
+          "
+
+      - name: Execute Sequence Allocator Integration Suite
+        run: |
+          node tests/integration/sequence-allocator.test.ts
+
+      - name: Verify Post-Test Database State & Zero Leakage
+        run: |
+          CONTAINER_ID=$(docker ps --filter "ancestor=postgres:17" --format "{{.ID}}")
+          echo "=== User Event Sequences Counter State ==="
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT user_id, next_sequence, updated_at FROM user_event_sequences;
+          "
+          echo "=== Memory Outbox Records Created ==="
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT id, user_id, format_version, sequence_number, status FROM memory_outbox;
+          "
+          echo "=== Memory Receipts Records Created ==="
+          docker exec -e PGPASSWORD=testpassword123 $CONTAINER_ID psql -U postgres -d whowasright_stage2_test -c "
+            SELECT id, user_id, sequence_number, outbox_id FROM memory_receipts;
+          "
+

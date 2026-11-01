@@ -858,7 +858,7 @@ export function renderMobileAppHtml(): string {
       background-color: var(--bg);
       color: var(--navy);
       line-height: 1.5;
-      padding-bottom: 74px; /* Space for bottom nav */
+      min-height: 100dvh;
       min-height: 100vh;
     }
 
@@ -880,6 +880,7 @@ export function renderMobileAppHtml(): string {
 
     #app-content {
       padding-top: 60px;
+      padding-bottom: 74px; /* Space for bottom nav */
     }
     .logo {
       font-size: 18px;
@@ -1131,18 +1132,110 @@ export function renderMobileAppHtml(): string {
       margin-bottom: 16px;
     }
 
+    /* Screen 0: Auth & Welcome Viewport Centering (Mobile-First) */
+    #screen-auth {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      max-width: 440px;
+      margin: 0 auto;
+      padding: 24px 16px;
+      box-sizing: border-box;
+    }
+
+    #screen-auth .card {
+      width: 100%;
+      text-align: center;
+      padding: 32px 20px;
+      margin: 0;
+      border-radius: var(--radius);
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.02);
+    }
+
+    .auth-title {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--navy);
+      margin-bottom: 8px;
+    }
+
+    .auth-subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 24px;
+      line-height: 1.5;
+      max-width: 320px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .auth-telegram-section {
+      margin-bottom: 24px;
+    }
+
+    .auth-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--slate);
+      margin-bottom: 4px;
+    }
+
+    .auth-section-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+
+    .telegram-widget-wrapper {
+      display: flex;
+      justify-content: center;
+      min-height: 44px;
+      align-items: center;
+    }
+
+    .auth-demo-section {
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+      margin-top: 4px;
+    }
+
+    .auth-demo-btn {
+      width: auto;
+      margin: 0 auto;
+      padding: 0 20px;
+      height: 44px;
+      min-height: 44px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--slate);
+      border-radius: 8px;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+
+    .auth-demo-btn:active {
+      transform: scale(0.98);
+    }
+
     .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
-  <!-- Screen 0: Authentication / Login Screen (Shown when unauthenticated) -->
-  <div id="screen-auth" class="container">
-    <div class="card" style="text-align: center; padding: 24px 16px; margin-top: 16px;">
+  <!-- Screen 0: Authentication / Login Screen (Centered Mobile-First Welcome) -->
+  <div id="screen-auth" class="container auth-container">
+    <div class="card auth-card">
       ${LOGO_HERO_SVG}
-      <h1 style="font-size: 20px; font-weight: 700; color: var(--navy); margin-bottom: 6px;">WhoWasRight</h1>
-      <p style="font-size: 13px; color: var(--muted); margin-bottom: 20px; line-height: 1.5;">
-        Private sports prediction journal with cryptographically immutable credibility tracking.
+      <h1 class="auth-title">WhoWasRight</h1>
+      <p class="auth-subtitle">
+        Private sports prediction journal with cryptographically immutable credibility tracking
       </p>
 
       <div id="auth-error-banner" class="banner banner-error hidden" style="text-align: left; margin-bottom: 16px;">
@@ -1150,21 +1243,21 @@ export function renderMobileAppHtml(): string {
       </div>
 
       <!-- Telegram Login Widget Section (Primary) -->
-      <div style="margin-bottom: 20px;">
-        <div style="font-size: 13px; font-weight: 600; color: var(--slate); margin-bottom: 4px;">
+      <div class="auth-telegram-section">
+        <div class="auth-section-title">
           Sign In with Telegram
         </div>
-        <p style="font-size: 11px; color: var(--muted); margin-bottom: 14px;">
-          Receive verified result alerts and settlement reminders via ${botHandle}.
+        <p class="auth-section-desc">
+          Receive verified result alerts and settlement reminders via ${botHandle}
         </p>
-        <div id="telegram-login-container" style="display: flex; justify-content: center; min-height: 44px; align-items: center;">
+        <div id="telegram-login-container" class="telegram-widget-wrapper">
           ${telegramWidgetHtml}
         </div>
       </div>
 
       <!-- Demo Account Login (Compact Secondary Alternative) -->
-      <div style="border-top: 1px solid var(--border); padding-top: 16px;">
-        <button id="btn-demo-login" class="btn btn-outline btn-sm" onclick="handleDemoLogin()" style="width: auto; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 8px 16px; font-size: 13px; color: var(--slate);">
+      <div class="auth-demo-section">
+        <button id="btn-demo-login" class="btn btn-outline btn-sm auth-demo-btn" onclick="handleDemoLogin()">
           Log in with a demo account
         </button>
       </div>
@@ -1195,10 +1288,10 @@ export function renderMobileAppHtml(): string {
     <!-- Screen 1: Dashboard / Home -->
     <div id="screen-home" class="screen">
       <div class="card" style="background: linear-gradient(135deg, #1E293B, #0F172A); color: white;">
-        <div style="font-size: 13px; color: #94A3B8; margin-bottom: 4px;">Private Prediction Journal</div>
-        <div style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Track Who Was Actually Right</div>
+        <div style="font-size: 13px; color: #94A3B8; margin-bottom: 4px;">Private prediction journal</div>
+        <div style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Track who was actually right</div>
         <button class="btn btn-primary" onclick="openLogScreen()" style="background: var(--blue);">
-          + Log New Prediction
+          + Log Pick
         </button>
       </div>
 
@@ -1209,11 +1302,11 @@ export function renderMobileAppHtml(): string {
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div style="background: var(--bg); padding: 12px; border-radius: 8px;">
-            <div style="font-size: 11px; color: var(--muted);">PENDING PICKS</div>
+            <div style="font-size: 11px; color: var(--muted);">Pending picks</div>
             <div id="stat-pending" style="font-size: 22px; font-weight: 700; color: var(--navy);">0</div>
           </div>
           <div style="background: var(--bg); padding: 12px; border-radius: 8px;">
-            <div style="font-size: 11px; color: var(--muted);">SETTLED PICKS</div>
+            <div style="font-size: 11px; color: var(--muted);">Settled picks</div>
             <div id="stat-settled" style="font-size: 22px; font-weight: 700; color: var(--navy);">0</div>
           </div>
         </div>
@@ -1226,7 +1319,7 @@ export function renderMobileAppHtml(): string {
         </div>
         <div id="home-analysts-list">
           <div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">
-            No analysts logged yet.
+            No analysts logged yet
           </div>
         </div>
       </div>
@@ -1249,8 +1342,8 @@ export function renderMobileAppHtml(): string {
       <!-- Paste Assistant Card -->
       <div class="paste-assistant">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="font-size: 13px; font-weight: 600; color: var(--blue);">📋 Quick Paste Assistant</span>
-          <span style="font-size: 11px; color: var(--muted);">Deterministic / Zero AI</span>
+          <span style="font-size: 13px; font-weight: 600; color: var(--blue);">Quick Paste Assistant</span>
+          <span style="font-size: 11px; color: var(--muted);">Deterministic · Zero AI</span>
         </div>
         <div class="form-group" style="margin-bottom: 8px;">
           <input type="text" id="paste-input" class="input" placeholder="Paste tip (e.g. Arsenal vs Chelsea - Over 2.5 goals)" style="font-size: 13px;">
@@ -1259,7 +1352,7 @@ export function renderMobileAppHtml(): string {
           <button class="btn btn-outline btn-sm" onclick="handlePasteParse()" style="background: white; flex: 1;">Parse Post</button>
         </div>
         <div id="paste-preview" class="hidden" style="margin-top: 10px; font-size: 12px; background: white; padding: 10px; border-radius: 6px; border: 1px solid var(--border);">
-          <div style="font-weight: 600; margin-bottom: 4px; color: var(--navy);">Parsed Suggestions (Requires Review):</div>
+          <div style="font-weight: 600; margin-bottom: 4px; color: var(--navy);">Suggested picks (review before saving)</div>
           <div id="paste-preview-content"></div>
           <button class="btn btn-primary btn-sm" onclick="applyParsedCandidate()" style="margin-top: 8px; width: 100%;">Use Suggestion</button>
         </div>
@@ -1272,7 +1365,7 @@ export function renderMobileAppHtml(): string {
         <div id="post-save-container" class="hidden">
           <div class="banner banner-success">
             <div>
-              <strong>✓ Prediction saved successfully.</strong>
+              <strong>✓ Prediction saved</strong>
               <div id="post-save-details" style="font-size: 12px; margin-top: 2px;"></div>
             </div>
           </div>
@@ -1292,11 +1385,11 @@ export function renderMobileAppHtml(): string {
           <div class="form-group">
             <label class="label">Sport</label>
             <select id="form-sport" class="select" required>
-              <option value="Football">⚽ Football</option>
-              <option value="Basketball">🏀 Basketball</option>
-              <option value="Tennis">🎾 Tennis</option>
-              <option value="Baseball">⚾ Baseball</option>
-              <option value="Other">🏆 Other Sport</option>
+              <option value="Football">Football</option>
+              <option value="Basketball">Basketball</option>
+              <option value="Tennis">Tennis</option>
+              <option value="Baseball">Baseball</option>
+              <option value="Other">Other sport</option>
             </select>
           </div>
 
@@ -1310,7 +1403,7 @@ export function renderMobileAppHtml(): string {
           <div class="form-group">
             <label class="label">Kickoff Time (UTC)</label>
             <input type="datetime-local" id="form-kickoff" class="input" required>
-            <span style="font-size: 11px; color: var(--muted);">Kickoff lock: predictions cannot be logged at or after start.</span>
+            <span style="font-size: 11px; color: var(--muted);">Kickoff lock: predictions cannot be logged at or after start</span>
           </div>
 
           <!-- Analyst Selection -->
@@ -1320,7 +1413,7 @@ export function renderMobileAppHtml(): string {
               <a href="javascript:void(0)" onclick="openNewAnalystModal()" style="font-size: 12px; color: var(--blue); text-decoration: none;">+ New Analyst</a>
             </div>
             <select id="form-analyst" class="select" onchange="handleAnalystDropdownChange()" required>
-              <option value="">Select Analyst...</option>
+              <option value="">Select analyst</option>
             </select>
           </div>
 
@@ -1339,10 +1432,10 @@ export function renderMobileAppHtml(): string {
           <div class="form-group">
             <label class="label">Market</label>
             <select id="form-market" class="select" onchange="handleMarketChange()" required>
-              <option value="1X2">Match Result (1X2)</option>
-              <option value="BTTS">Both Teams to Score (BTTS)</option>
-              <option value="TOTAL_GOALS">Total Goals (Over/Under)</option>
-              <option value="CUSTOM">Custom Pick</option>
+              <option value="1X2">Match result (1X2)</option>
+              <option value="BTTS">Both teams to score (BTTS)</option>
+              <option value="TOTAL_GOALS">Total goals (Over/Under)</option>
+              <option value="CUSTOM">Custom pick</option>
             </select>
           </div>
 
@@ -1369,7 +1462,7 @@ export function renderMobileAppHtml(): string {
       </div>
       <div id="predictions-list">
         <div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">
-          Loading predictions...
+          Loading predictions
         </div>
       </div>
     </div>
@@ -1382,7 +1475,7 @@ export function renderMobileAppHtml(): string {
       </div>
       <div id="analysts-list">
         <div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">
-          Loading analysts...
+          Loading analysts
         </div>
       </div>
     </div>
@@ -1408,11 +1501,11 @@ export function renderMobileAppHtml(): string {
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
           <div style="background: var(--bg); padding: 10px 12px; border-radius: 8px;">
-            <div style="font-size: 11px; color: var(--muted);">WIN RATE</div>
+            <div style="font-size: 11px; color: var(--muted);">Win rate</div>
             <div style="font-size: 20px; font-weight: 700; color: var(--navy);" id="detail-win-rate">—</div>
           </div>
           <div style="background: var(--bg); padding: 10px 12px; border-radius: 8px;">
-            <div style="font-size: 11px; color: var(--muted);">HISTORY BADGE</div>
+            <div style="font-size: 11px; color: var(--muted);">History badge</div>
             <div style="font-size: 14px; font-weight: 600; color: var(--navy); margin-top: 4px;" id="detail-history-badge">Insufficient</div>
           </div>
         </div>
@@ -1420,15 +1513,15 @@ export function renderMobileAppHtml(): string {
         <!-- Outcome breakdown grid -->
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; text-align: center;">
           <div style="background: #F0FDF4; border: 1px solid #DCFCE7; padding: 8px; border-radius: 6px;">
-            <div style="font-size: 11px; color: #166534; font-weight: 600;">WON</div>
+            <div style="font-size: 11px; color: #166534; font-weight: 600;">Won</div>
             <div style="font-size: 16px; font-weight: 700; color: #166534;" id="detail-count-won">0</div>
           </div>
           <div style="background: #FEF2F2; border: 1px solid #FEE2E2; padding: 8px; border-radius: 6px;">
-            <div style="font-size: 11px; color: #991B1B; font-weight: 600;">LOST</div>
+            <div style="font-size: 11px; color: #991B1B; font-weight: 600;">Lost</div>
             <div style="font-size: 16px; font-weight: 700; color: #991B1B;" id="detail-count-lost">0</div>
           </div>
           <div style="background: #F8FAFC; border: 1px solid var(--border); padding: 8px; border-radius: 6px;">
-            <div style="font-size: 11px; color: var(--muted); font-weight: 600;">PUSH</div>
+            <div style="font-size: 11px; color: var(--muted); font-weight: 600;">Push</div>
             <div style="font-size: 16px; font-weight: 700; color: var(--slate);" id="detail-count-push">0</div>
           </div>
         </div>
@@ -1444,12 +1537,12 @@ export function renderMobileAppHtml(): string {
         <!-- Walrus Decentralized Memory Sync Status -->
         <div style="padding: 10px 0; border-top: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
           <span style="color: var(--muted);">Walrus Memory:</span>
-          <span class="badge badge-not-rated" id="detail-walrus-status">⏳ Checking...</span>
+          <span class="badge badge-not-rated" id="detail-walrus-status">Checking</span>
         </div>
 
         <!-- Historical Integrity Banner -->
         <div id="detail-integrity-banner" class="banner banner-warning hidden" style="margin-top: 10px; margin-bottom: 0;">
-          <span id="detail-integrity-text">Checking verification status...</span>
+          <span id="detail-integrity-text">Checking verification status</span>
         </div>
       </div>
 
@@ -1458,7 +1551,7 @@ export function renderMobileAppHtml(): string {
         <div class="card-title">Prediction History</div>
         <div id="detail-predictions-list">
           <div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">
-            No predictions logged for this analyst.
+            No predictions logged for this analyst
           </div>
         </div>
       </div>
@@ -1467,7 +1560,7 @@ export function renderMobileAppHtml(): string {
     <!-- Screen 5: Settings (Approved 4th Navigation Destination) -->
     <div id="screen-settings" class="screen hidden">
       <div class="card">
-        <div class="card-title">Telegram Identity & Connection</div>
+        <div class="card-title">Telegram identity & connection</div>
         <div style="font-size: 13px; color: var(--slate); margin-bottom: 12px;">
           Connected as <strong id="settings-username">@TelegramUser</strong>
         </div>
@@ -1487,7 +1580,7 @@ export function renderMobileAppHtml(): string {
       </div>
 
       <div class="card">
-        <div class="card-title">Storage & Privacy</div>
+        <div class="card-title">Storage & privacy</div>
         <div style="font-size: 12px; color: var(--slate); line-height: 1.6;">
           <p style="margin-bottom: 8px;"><strong>Walrus Memory:</strong> Historical prediction and settlement events are synchronized to decentralized Walrus storage for independent reconstruction.</p>
           <p style="margin-bottom: 8px;"><strong>Application Encryption:</strong> Historical event records are encrypted application-side using AES-256-GCM with server-managed keys before transmission.</p>
@@ -1499,7 +1592,7 @@ export function renderMobileAppHtml(): string {
       </div>
 
       <div class="card">
-        <div class="card-title" style="color: var(--red);">Account Actions</div>
+        <div class="card-title" style="color: var(--red);">Account actions</div>
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <button class="btn btn-outline" onclick="handleSignOut()" style="color: var(--slate); width: 100%;">
             Sign Out
@@ -1565,19 +1658,19 @@ export function renderMobileAppHtml(): string {
   <!-- Bottom Navigation (Approved 4 Destinations: Home, Predictions, Analysts, Settings) -->
   <nav class="bottom-nav">
     <div class="nav-item active" onclick="switchTab('home')" id="tab-home">
-      <div class="nav-icon">🏠</div>
+      <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
       <span>Home</span>
     </div>
     <div class="nav-item" onclick="switchTab('predictions')" id="tab-predictions">
-      <div class="nav-icon">📊</div>
+      <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
       <span>Predictions</span>
     </div>
     <div class="nav-item" onclick="switchTab('analysts')" id="tab-analysts">
-      <div class="nav-icon">👥</div>
+      <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
       <span>Analysts</span>
     </div>
     <div class="nav-item" onclick="switchTab('settings')" id="tab-settings">
-      <div class="nav-icon">⚙️</div>
+      <div class="nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
       <span>Settings</span>
     </div>
   </nav>
@@ -1917,21 +2010,21 @@ export function renderMobileAppHtml(): string {
         } else if (integ.status === 'INCOMPLETE') {
           if (walrusStatusEl) {
             walrusStatusEl.className = 'badge badge-pending';
-            walrusStatusEl.textContent = '⏳ Awaiting Walrus Sync';
+            walrusStatusEl.textContent = 'Awaiting Walrus sync';
           }
           if (bannerEl && bannerTextEl) {
             bannerEl.className = 'banner banner-warning';
-            bannerTextEl.textContent = '⚠️ ' + (integ.warning || 'History Incomplete: pending Walrus synchronization');
+            bannerTextEl.textContent = (integ.warning || 'History incomplete: pending Walrus synchronization');
             bannerEl.classList.remove('hidden');
           }
         } else if (integ.status === 'UNAVAILABLE') {
           if (walrusStatusEl) {
             walrusStatusEl.className = 'badge badge-not-rated';
-            walrusStatusEl.textContent = '⏳ Verification Unavailable';
+            walrusStatusEl.textContent = 'Verification unavailable';
           }
           if (bannerEl && bannerTextEl) {
             bannerEl.className = 'banner banner-warning';
-            bannerTextEl.textContent = '⚠️ ' + (integ.warning || 'Walrus verification service temporarily unavailable');
+            bannerTextEl.textContent = (integ.warning || 'Walrus verification service temporarily unavailable');
             bannerEl.classList.remove('hidden');
           }
         } else {
@@ -1942,7 +2035,7 @@ export function renderMobileAppHtml(): string {
           }
           if (bannerEl && bannerTextEl) {
             bannerEl.className = 'banner banner-error';
-            bannerTextEl.textContent = '⚠️ ' + (integ.warning || 'Historical integrity mismatch detected');
+            bannerTextEl.textContent = (integ.warning || 'Historical integrity mismatch detected');
             bannerEl.classList.remove('hidden');
           }
         }
@@ -1971,11 +2064,11 @@ export function renderMobileAppHtml(): string {
         const errBannerTextEl = document.getElementById('detail-integrity-text');
         if (errWalrusEl) {
           errWalrusEl.className = 'badge badge-not-rated';
-          errWalrusEl.textContent = '⏳ Verification Unavailable';
+          errWalrusEl.textContent = 'Verification unavailable';
         }
         if (errBannerEl && errBannerTextEl) {
           errBannerEl.className = 'banner banner-warning';
-          errBannerTextEl.textContent = '⚠️ Walrus verification service temporarily unavailable';
+          errBannerTextEl.textContent = 'Walrus verification service temporarily unavailable';
           errBannerEl.classList.remove('hidden');
         }
       }
@@ -1995,11 +2088,11 @@ export function renderMobileAppHtml(): string {
 
         if (data.status === 'WARNING') {
           banner.className = 'banner banner-warning';
-          bannerText.textContent = '⚠️ ' + data.warningMessage;
+          bannerText.textContent = data.warningMessage;
           banner.classList.remove('hidden');
         } else if (data.status === 'ADVISORY') {
           banner.className = 'banner banner-warning';
-          bannerText.textContent = 'ℹ️ ' + data.warningMessage;
+          bannerText.textContent = data.warningMessage;
           banner.classList.remove('hidden');
         } else {
           banner.classList.add('hidden');
@@ -2020,7 +2113,7 @@ export function renderMobileAppHtml(): string {
         const select = document.getElementById('form-analyst');
         if (select) {
           const currentVal = select.value;
-          select.innerHTML = '<option value="">Select Analyst...</option>';
+          select.innerHTML = '<option value="">Select analyst</option>';
           analystsList.forEach(a => {
             const opt = document.createElement('option');
             opt.value = a.id;
@@ -2069,7 +2162,7 @@ export function renderMobileAppHtml(): string {
       if (!container) return;
 
       if (analystsList.length === 0) {
-        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">No analysts logged yet.</div>';
+        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 16px;">No analysts logged yet</div>';
         return;
       }
 
@@ -2096,7 +2189,7 @@ export function renderMobileAppHtml(): string {
       if (!container) return;
 
       if (predictionsList.length === 0) {
-        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">No predictions match this filter.</div>';
+        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">No predictions match this filter</div>';
         return;
       }
 
@@ -2108,8 +2201,8 @@ export function renderMobileAppHtml(): string {
         }) + ' UTC';
 
         const syncBadge = p.walrus_sync_status === 'CONFIRMED'
-          ? '<span class="badge badge-good" style="font-size: 10px;">✓ Walrus Synced</span>'
-          : '<span class="badge badge-pending" style="font-size: 10px;">⏳ Syncing...</span>';
+          ? '<span class="badge badge-good" style="font-size: 10px;">Walrus synced</span>'
+          : '<span class="badge badge-pending" style="font-size: 10px;">Syncing</span>';
 
         return '<div class="card" id="prediction-card-' + p.id + '" style="margin-bottom: 10px;">' +
           '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
@@ -2144,7 +2237,7 @@ export function renderMobileAppHtml(): string {
           const banner = document.createElement('div');
           banner.className = 'card';
           banner.style.cssText = 'border-left: 3px solid var(--lost); margin-bottom: 12px; font-size: 13px; color: var(--navy);';
-          banner.innerHTML = '<strong>Prediction Not Found:</strong> You do not have access to this prediction or it does not exist.';
+          banner.innerHTML = '<strong>Prediction not found:</strong> You do not have access to this prediction or it does not exist.';
           container.prepend(banner);
           return;
         }
@@ -2169,7 +2262,7 @@ export function renderMobileAppHtml(): string {
           card.className = 'card';
           card.style.cssText = 'margin-bottom: 12px; outline: 2px solid var(--blue);';
           card.innerHTML =
-            '<div style="font-size: 11px; font-weight: 700; color: var(--blue); margin-bottom: 6px;">📍 LINKED PREDICTION</div>' +
+            '<div style="font-size: 11px; font-weight: 600; color: var(--blue); margin-bottom: 6px;">Linked prediction</div>' +
             '<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">' +
               '<div>' +
                 '<span class="badge badge-not-rated" style="margin-right: 6px;">' + p.sport + '</span>' +
@@ -2205,7 +2298,7 @@ export function renderMobileAppHtml(): string {
       if (!container) return;
 
       if (analystsList.length === 0) {
-        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">No analysts added yet.</div>';
+        container.innerHTML = '<div style="font-size: 13px; color: var(--muted); text-align: center; padding: 24px;">No analysts added yet</div>';
         return;
       }
 
@@ -2227,15 +2320,15 @@ export function renderMobileAppHtml(): string {
             '<span class="badge ' + tierClass + '">' + tier + '</span>' +
           '</div>' +
           '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 12px; margin: 10px 0; background: var(--bg); padding: 8px; border-radius: 6px;">' +
-            '<div><span style="color: var(--muted); font-size: 10px; display: block;">WIN RATE</span><strong>' + winRate + '</strong></div>' +
-            '<div><span style="color: var(--muted); font-size: 10px; display: block;">SETTLED</span><strong>' + (cred.settledCount || 0) + '</strong> (' + (cred.wonCount || 0) + 'W-' + (cred.lostCount || 0) + 'L)</div>' +
-            '<div><span style="color: var(--muted); font-size: 10px; display: block;">HISTORY</span><strong>' + (cred.historyBadge || 'Insufficient') + '</strong></div>' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">Win rate</span><strong>' + winRate + '</strong></div>' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">Settled</span><strong>' + (cred.settledCount || 0) + '</strong> (' + (cred.wonCount || 0) + 'W-' + (cred.lostCount || 0) + 'L)</div>' +
+            '<div><span style="color: var(--muted); font-size: 10px; display: block;">History</span><strong>' + (cred.historyBadge || 'Insufficient') + '</strong></div>' +
           '</div>' +
           '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">' +
             '<div style="font-size: 11px; color: var(--muted);">' + (cred.apiVerifiedCount || 0) + ' API · ' + (cred.selfReportedCount || 0) + ' Self</div>' +
             '<div style="display: flex; gap: 6px;">' +
               '<button class="btn btn-outline btn-sm" onclick="openAnalystDetail(\\\'' + a.id + '\\\')">View Details</button>' +
-              '<button class="btn btn-outline btn-sm" onclick="openMergeModal(\\\'' + a.id + '\\\', \\\'' + a.name + '\\\')">Merge...</button>' +
+              '<button class="btn btn-outline btn-sm" onclick="openMergeModal(\\\'' + a.id + '\\\', \\\'' + a.name + '\\\')">Merge</button>' +
             '</div>' +
           '</div>' +
         '</div>';
@@ -2367,7 +2460,7 @@ export function renderMobileAppHtml(): string {
       document.getElementById('merge-target-id').value = targetId;
       document.getElementById('merge-target-name').textContent = targetName;
       const sourceSelect = document.getElementById('merge-source-select');
-      sourceSelect.innerHTML = '<option value="">Select profile...</option>';
+      sourceSelect.innerHTML = '<option value="">Select profile</option>';
       analystsList.filter(a => a.id !== targetId).forEach(a => {
         const opt = document.createElement('option');
         opt.value = a.id;

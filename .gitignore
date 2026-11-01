@@ -26,3 +26,7 @@ Thumbs.db
 # Scratch and Temporary
 scratch/
 
+# Bento design mockups & previews
+docs/evidence/bento-preview.html
+src/web/components/
+

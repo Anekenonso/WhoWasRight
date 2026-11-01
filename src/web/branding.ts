@@ -61,9 +61,8 @@ export const LOGO_TOPBAR_SVG = `<svg width="24" height="24" viewBox="0 0 48 48" 
   <path d="M21 25L26 30L37 16" stroke="#10B981" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>`;
 
-export const LOGO_HERO_SVG = `<div style="display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 72px; margin: 0 auto 14px auto; position: relative;">
-  <div style="position: absolute; inset: -4px; background: radial-gradient(circle, rgba(37,99,235,0.2) 0%, rgba(16,185,129,0.15) 50%, transparent 70%); border-radius: 24px; filter: blur(8px);"></div>
-  <svg width="68" height="68" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="position: relative; z-index: 1;">
+export const LOGO_HERO_SVG = `<div style="display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; margin: 0 auto 16px auto; position: relative;">
+  <svg width="64" height="64" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="hero-shield-bg" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
         <stop offset="0%" stop-color="#1E293B"/>
@@ -77,15 +76,12 @@ export const LOGO_HERO_SVG = `<div style="display: inline-flex; align-items: cen
         <stop offset="0%" stop-color="#34D399"/>
         <stop offset="100%" stop-color="#059669"/>
       </linearGradient>
-      <filter id="hero-check-glow" x="-20%" y="-20%" width="140%" height="140%">
-        <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#10B981" flood-opacity="0.5"/>
-      </filter>
     </defs>
     <rect x="4" y="4" width="40" height="40" rx="12" fill="url(#hero-shield-bg)"/>
     <rect x="4" y="4" width="40" height="40" rx="12" stroke="#334155" stroke-width="1.5"/>
     <circle cx="24" cy="24" r="14" stroke="#334155" stroke-width="1" stroke-dasharray="3 3"/>
     <path d="M12.5 17.5L18 31L23.5 19.5L29 31L34.5 17.5" stroke="url(#hero-w-grad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M21 24.5L26 29.5L37.5 15" stroke="url(#hero-check-grad)" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" filter="url(#hero-check-glow)"/>
+    <path d="M21 24.5L26 29.5L37.5 15" stroke="url(#hero-check-grad)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
 </div>`;
 

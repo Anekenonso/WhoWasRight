@@ -14,7 +14,7 @@
 [![Tests](https://img.shields.io/badge/Tests-Passing_100%25-10B981?style=flat-square&logo=githubactions&logoColor=white)](tests/)
 [![Security](https://img.shields.io/badge/Security-HMAC--SHA256_|_AES--256--GCM-F59E0B?style=flat-square&logo=auth0&logoColor=white)](#security--architecture)
 [![Hindsight Blocked](https://img.shields.io/badge/Audit-Hindsight_Proof_100%25-10B981?style=flat-square&logo=cloudflare&logoColor=white)](#core-features)
-[![License](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](#)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](LICENSE)
 
 </div>
 
@@ -23,14 +23,13 @@
 ### 🏆 Total Recall Hackathon Quick Links
 > **Track 01:** Markets & Sports Prediction  
 > **Live Production App:** [https://whowasright.onrender.com/](https://whowasright.onrender.com/)  
-> **Submission Article:** [`docs/ARTICLE.md`](docs/ARTICLE.md)  
 > **Sponsor Technologies:** Walrus Decentralized Memory (`@mysten-incubation/memwal`) & Tatum Sui Gateway (HTTP/2 gRPC)
 
 ---
 
-## ⚡ 60-Second Judge Evaluation Guide (No Setup Required)
+## ⚡ Live Demo & Quick-Start (Instant Sandbox Access)
 
-Judges can test the live production application immediately without needing a Telegram account or Web3 wallet.
+Anyone can test the live production application immediately without needing a Telegram account or Web3 wallet:
 
 1. **Open the Live App:** [https://whowasright.onrender.com/](https://whowasright.onrender.com/)
 2. **One-Click Sandbox Login:** Below the Telegram login widget, click **"Log in with a demo account"**.
@@ -45,7 +44,7 @@ Judges can test the live production application immediately without needing a Te
 
 ## 📋 Hackathon Evidence & Sponsor Proof Map
 
-| Judging Dimension | Requirement | **WhoWasRight Implementation** | Direct Proof Reference |
+| Dimension / Category | Requirement | **WhoWasRight Implementation** | Direct Proof Reference |
 | :--- | :--- | :--- | :--- |
 | **Walrus Mainnet Memory** | $\ge 10$ confirmed Mainnet memories | **70+ confirmed Mainnet memories** recorded on production Walrus relayer (`relayer.memory.walrus.xyz`) | [`docs/evidence/walrus-history-proof.json`](docs/evidence/walrus-history-proof.json) |
 | **Decentralized Reconstruction** | Real memory recall & ledger reconstruction | **Solved the Top-K Vector Truncation Flaw:** Built a deterministic sequence ledger with AES-256-GCM encryption guaranteeing 100% win-rate reconstruction without losing events | [`docs/evidence/walrus-v2-lifecycle-report.md`](docs/evidence/walrus-v2-lifecycle-report.md)<br>[`src/core/walrus-reconstruction.ts`](src/core/walrus-reconstruction.ts) |
@@ -153,3 +152,9 @@ node --env-file-if-exists=.env tests/unit/demo-cleanup.test.ts
 - **Replay & Tamper Defense:** Telegram authentication payloads are HMAC-SHA256 verified against the configured bot secret with a strict 24-hour timestamp check.
 - **Outbox Concurrency & Rate Safety:** Bounded batch processing with `SKIP LOCKED` prevents gateway timeouts while ensuring reliable asynchronous memory delivery.
 - **Application-Layer Encryption:** Sensitive bet details are encrypted with AES-256-GCM before transmission to decentralized storage.
+
+---
+
+## 📜 License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

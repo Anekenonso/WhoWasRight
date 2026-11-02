@@ -15,6 +15,7 @@
     "test:unit:demo": "node --env-file-if-exists=.env tests/unit/demo-cleanup.test.ts",
     "test:unit:credibility": "node --env-file-if-exists=.env tests/unit/credibility.test.ts",
     "test:unit:walrus": "node --env-file-if-exists=.env tests/unit/walrus-reconstruction.test.ts",
+    "test:walrus:lifecycle": "node --env-file-if-exists=.env tests/integration/walrus-v2-lifecycle.test.ts",
     "test:unit:telegram": "node --env-file-if-exists=.env tests/unit/telegram-auth.test.ts",
     "test:unit:football": "node --env-file-if-exists=.env tests/unit/football-cache.test.ts",
     "test:unit:paste": "node --env-file-if-exists=.env tests/unit/paste-parser.test.ts",

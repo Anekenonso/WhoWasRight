@@ -30,3 +30,21 @@ scratch/
 docs/evidence/bento-preview.html
 src/web/components/
 
+docs/Build-plan.md
+Agents.md
+docs/evidence/screenshots/
+
+# Marketing, Video & Audio Materials (Strictly excluded from GitHub)
+video/
+marketing/
+promo/
+*.mp4
+*.webm
+*.mov
+*.avi
+*.mkv
+*.wav
+*.mp3
+*.aac
+*.ogg
+*.flac

@@ -23,6 +23,7 @@
 ### 🏆 Total Recall Hackathon Quick Links
 > **Track 01:** Markets & Sports Prediction  
 > **Live Production App:** [https://whowasright.onrender.com/](https://whowasright.onrender.com/)  
+> **Submission Article:** [`docs/ARTICLE.md`](docs/ARTICLE.md)  
 > **Sponsor Technologies:** Walrus Decentralized Memory (`@mysten-incubation/memwal`) & Tatum Sui Gateway (HTTP/2 gRPC)
 
 ---
